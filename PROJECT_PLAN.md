@@ -297,7 +297,7 @@ Goal: a real, rerunnable result that shows we are technically better than a fron
 | B5 | Nihar | Claude buyer run (remote agent, pay tools only) | Done |
 | B6 | Nihar | Benchmark (section 12) + `/v1/bench` | Done (bench/results.json, served at /v1/bench) |
 | B7 | Nihar | Tunnel + one mainnet run with cents | Tunnel done (https://motto.tail039d5c.ts.net). Mainnet run dropped: sandbox only (Nihar, 2026-09-30). Sandbox proof: `motto/proof/` (3 holds, signatures verified) |
-| B8 | Nihar | OpenAPI + Pay.sh catalog PR | Listing points at https://motto.tail039d5c.ts.net; live `pay catalog check` probe passes (6/6 paid endpoints return x402 upto USDC, exit 0). PR not opened: forking pay-skills needs Nihar to approve that action |
+| B8 | Nihar | OpenAPI + Pay.sh catalog PR | Listing points at https://motto.tail039d5c.ts.net; live `pay catalog check` probe passes (6/6 paid endpoints return x402 upto USDC, exit 0). PR open, not merged: https://github.com/solana-foundation/pay-skills/pull/280. Keep the desk up until it merges |
 | B9 | Nithin | Slides (middleman, benchmark, why Solana), sounds, demo script | First version done (slides/index.html, demo/DEMO_SCRIPT.md); Nithin polishes |
 | B10 | Nithin | README polish, 2 min video, submission | README and SUBMISSION.md drafted with TODO placeholders; video and links to do, submit by 15:40 |
 

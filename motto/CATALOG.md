@@ -17,7 +17,7 @@ The directory name must equal `name:` (`rentals`) or `pay catalog check` fails, 
 2. Reread the `Status:` paragraph in `PAY.md`. It says the desk is demoed in the Pay.sh sandbox. Edit it if the URL serves a mainnet desk. Never present a sandbox desk as a live mainnet service.
 3. Optional: add `sandbox_service_url: https://...` for a sandbox desk that uses `https://402.surfnet.dev` as its RPC.
 
-## Commands (prepared, not yet run against the real repo)
+## Commands (run on 2026-09-30, opened https://github.com/solana-foundation/pay-skills/pull/280)
 
 ```bash
 # 1. Fork and clone outside this repo

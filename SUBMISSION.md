@@ -2,7 +2,7 @@
 
 > An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest. A deposit desk for agents buying things in the real world, built on Pay.sh x402 `upto` holds and settled in USDC on Solana.
 
-**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh listing / PR:** TODO before submit: PR link
+**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh listing / PR:** https://github.com/solana-foundation/pay-skills/pull/280
 
 **Repo:** https://github.com/niharnm/Sol-Hack (TODO before submit: the repo is private today, make it public or add the judges) | **Team:** Nihar (product), Nithin (design, polish, demo)
 
@@ -44,7 +44,7 @@ confirm the sandbox transactions themselves.
 1. A buyer agent (Claude via `pay claude` or `pay mcp`) reads the desk's terms at `GET /v1/terms`:
    the items, the $1.00 hold, the $0.01 check fee, the check question and the refund rules.
    `GET /openapi.json` carries the x402 offers for the Pay.sh catalog. The listing is prepared in
-   `motto/CATALOG.md` and `motto/catalog/` (PR: TODO before submit: PR link).
+   `motto/CATALOG.md` and `motto/catalog/` (PR: https://github.com/solana-foundation/pay-skills/pull/280).
 2. The agent calls `POST /v1/rent/<item>`. The desk answers `402` with an x402 `upto` offer for $1.00
    USDC, the agent's `pay` client signs and retries, and `@solana/pay-kit` escrows the $1.00 ceiling.
    That is the hold.
@@ -128,9 +128,9 @@ Results are in `motto/bench/results.json` (`ranAt` 2026-09-30T18:45:33.372Z) and
 - The desk runs on the demo laptop because the checks read that laptop. In production the check runs
   on the rented hardware, and the hardware signs the reading instead of the desk's device key.
 - The benchmark uses generated scenarios and simulated device states (see the note above).
-- The Pay.sh catalog listing is prepared (`motto/CATALOG.md`) but points at https://motto.tail039d5c.ts.net
-  and passes the registry's live probe (6/6 paid endpoints). The pull request to
-  `solana-foundation/pay-skills` is not opened yet (TODO before submit: PR link, or drop this line).
+- The Pay.sh catalog listing points at https://motto.tail039d5c.ts.net and passes the registry's live
+  probe (6/6 paid endpoints). The pull request to `solana-foundation/pay-skills` is open and not merged
+  yet: https://github.com/solana-foundation/pay-skills/pull/280
   The desk runs in the Pay.sh sandbox, not as a live mainnet service.
 
 ## Built today with

@@ -2,7 +2,7 @@
 
 > An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
 
-**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** TODO before submit: PR link
+**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** https://github.com/solana-foundation/pay-skills/pull/280
 
 A deposit desk for agents buying things in the real world. The agent puts $1 USDC on hold, the desk
 checks whether the need is already handled, then keeps the money as the rental or sends it back.
