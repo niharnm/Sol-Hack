@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
 import { chargerWaitMs, checkCharger, checkHotspot, devicePublicKey } from './checks.js';
 import { postReceipt } from './receipt.js';
+import { settlementFor } from './settlement.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const NETWORK = process.env.NETWORK ?? 'localnet';
@@ -20,10 +21,6 @@ const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 // Enough history for the dashboard counters without growing memory forever.
 const MAX_HOLDS = 500;
 
-// USDC has 6 decimals: $1.00 hold, $0.01 check fee.
-const HOLD_BASE_UNITS = 1_000_000n;
-const CHECK_FEE_BASE_UNITS = 10_000n;
-
 const ITEMS = {
   charger: {
     hold_usd: '1.00',
@@ -33,6 +30,7 @@ const ITEMS = {
       already_handled: 'Device already on power: charge the $0.01 check fee, $0.99 returned.',
       delivered: 'Device on battery, power delivered within the wait window: rental kept, $1.00 charged.',
       not_delivered: 'Power never arrived: charge the $0.01 check fee, $0.99 returned.',
+      check_failed: 'The check itself failed: nothing charged, $1.00 returned.',
     },
   },
   hotspot: {
@@ -42,6 +40,7 @@ const ITEMS = {
     rules: {
       already_handled: 'Device already on venue network: charge the $0.01 check fee, $0.99 returned.',
       delivered: 'Device off venue network: hotspot rental kept, $1.00 charged.',
+      check_failed: 'The check itself failed: nothing charged, $1.00 returned.',
     },
   },
 };
@@ -66,8 +65,10 @@ const holds = loadHolds();
 const listeners = new Set();
 function publish(hold) {
   const i = holds.findIndex(h => h.id === hold.id);
-  if (i === -1) holds.unshift(hold);
-  else holds[i] = hold;
+  // A late update (receipt) for a hold already evicted from memory is logged but not re-inserted.
+  const evicted = i === -1 && hold.status !== 'checking' && holds.length >= MAX_HOLDS;
+  if (i !== -1) holds[i] = hold;
+  else if (!evicted) holds.unshift(hold);
   if (holds.length > MAX_HOLDS) holds.pop();
   try {
     appendFileSync(HOLDS_FILE, JSON.stringify(hold) + '\n');
@@ -222,10 +223,9 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     reading = { holdId: hold.id, item, outcome: 'check_failed', detail: String(error?.message ?? error), ts: Date.now() };
   }
 
-  const keep = reading.outcome === 'delivered';
-  result.charge.charge(keep ? HOLD_BASE_UNITS : CHECK_FEE_BASE_UNITS);
-  const charged = keep ? '1.00' : '0.01';
-  const returned = keep ? '0.00' : '0.99';
+  const { keep, chargeBaseUnits } = settlementFor(reading.outcome);
+  // Never setting the meter settles 0, so a desk-side check failure costs the agent nothing.
+  if (chargeBaseUnits > 0n) result.charge.charge(chargeBaseUnits);
 
   let settlementHeaders = {};
   let settleError;
@@ -235,15 +235,16 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     settleError = String(error?.message ?? error);
   }
   for (const [name, value] of Object.entries(settlementHeaders)) res.setHeader(name, value);
+  const { decision, charged_usd, returned_usd } = settlementFor(reading.outcome, settleError);
 
   const memo = `DESK ${keep ? 'KEEP' : 'REFUND'} hold:${hold.id} ${item} ${reading.detail} sig:${(reading.signature ?? '').slice(0, 8)}`;
   const settled = {
     ...hold,
-    status: settleError ? 'settle_failed' : keep ? 'kept' : 'refunded',
+    status: settleError ? 'settle_failed' : decision,
     outcome: reading.outcome,
     detail: reading.detail,
-    charged_usd: charged,
-    returned_usd: returned,
+    charged_usd,
+    returned_usd,
     settlementTx: extractSignature(settlementHeaders),
     settleError,
     reading,
@@ -261,10 +262,9 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     hold_id: hold.id,
     item,
     outcome: reading.outcome,
-    // A failed settle moved no money yet: say so instead of reporting the intended split as done.
-    decision: settleError ? 'settle_failed' : keep ? 'kept' : 'refunded',
-    charged_usd: charged,
-    returned_usd: returned,
+    decision,
+    charged_usd,
+    returned_usd,
     settle_error: settleError,
     reason: ITEMS[item].rules[reading.outcome] ?? reading.detail,
     signed_reading: reading,

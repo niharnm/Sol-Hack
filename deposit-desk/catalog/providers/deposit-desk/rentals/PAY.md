@@ -29,14 +29,14 @@ Status: demo. The desk is currently demoed in the Pay.sh sandbox, which settles 
 | charger | `not_delivered`: power never arrived | $0.01 | $0.99 |
 | hotspot | `already_handled`: device already on the venue network | $0.01 check fee | $0.99 |
 | hotspot | `delivered`: device off the venue network, hotspot rental kept | $1.00 | $0.00 |
-| both | `check_failed`: the check itself errored | $0.01 | $0.99 |
+| both | `check_failed`: the check itself errored | $0.00 | $1.00 |
 
 A successful call returns `hold_id`, `item`, `outcome`, `decision` (`kept`, `refunded`, or `settle_failed` when the settlement transaction failed and no money moved, with `settle_error`), `charged_usd`, `returned_usd`, `reason` (the rule that applied), `signed_reading`, `settlement_tx` and `network`. `signed_reading` carries the raw device observation, a hex ed25519 `signature`, and the `devicePublicKey` that `GET /v1/terms` also publishes. A failed check returns an unsigned reading.
 
 ## Spend-aware usage
 
 - Call `GET /v1/terms` first. It is free and states the hold, the fee and the rules before any money moves.
-- Rent only when the user may really need the item. Only a delivered rental costs $1.00; an already handled need, a delivery that never happened, or a failed check costs $0.01.
+- Rent only when the user may really need the item. Only a delivered rental costs $1.00; an already handled need or a delivery that never happened costs $0.01; a failed check costs nothing.
 - A call without payment returns `402` with an x402 `upto` offer for 1000000 USDC base units ($1.00). Use a payment-aware client (`pay curl` or the Pay MCP `curl` tool) so it pays and retries. The wallet needs $1.00 of spendable USDC for the hold.
 - One call is one hold. Do not repeat a call that returned 200, because a second call opens a second hold.
 - Keep `wait_seconds` at 30 or lower. The offer's `maxTimeoutSeconds` is 300, so the wait must stay well under that.

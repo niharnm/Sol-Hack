@@ -173,7 +173,7 @@
   </header>
 
   <section class="stats" aria-label="Totals">
-    <div class="stat"><b id="s-holds">0</b><span>holds</span></div>
+    <div class="stat"><b id="s-holds">0</b><span id="s-holds-label">holds</span></div>
     <div class="stat kept"><b id="s-kept">0</b><span>rentals kept</span></div>
     <div class="stat refunded"><b id="s-refunded">0</b><span>holds refunded</span></div>
     <div class="stat refunded"><b id="s-saved">$0.00</b><span>returned to agents</span></div>
@@ -404,7 +404,7 @@
     return bits.join(' · ');
   }
   const rowMoney = h =>
-    h.status === 'interrupted' ? humanize(h.detail)
+    h.status === 'interrupted' ? esc(humanize(h.detail))
       : h.status === 'settle_failed' ? 'settlement failed'
       : h.charged_usd != null ? `charged ${money(h.charged_usd)} · returned ${money(h.returned_usd)}`
         : `${money(h.hold_usd)} on hold`;
@@ -415,6 +415,8 @@
 
   function renderStats(list) {
     const done = list.filter(h => h.status === 'kept' || h.status === 'refunded');
+    const failed = list.filter(h => h.status === 'settle_failed' || h.status === 'interrupted').length;
+    $('s-holds-label').textContent = failed ? `holds (${failed} failed)` : 'holds';
     const values = {
       's-holds': String(list.length),
       's-kept': String(done.filter(h => h.status === 'kept').length),

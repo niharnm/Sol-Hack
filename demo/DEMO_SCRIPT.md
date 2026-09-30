@@ -248,7 +248,7 @@ Plus the live counters on the dashboard. No other numbers unless they are on scr
   hidden truth, and every run gets the same 50 scenarios. The no-desk runs see only text context, the
   way a cloud agent does, and the desk run can also hold. Rerun it with `npm run bench`.
 - **What if something breaks mid-hold?** If the check fails the desk reports `check_failed` and charges
-  only the $0.01 fee, never the $1.00. If the handler throws, pay-kit still seals the hold and
+  nothing, never the $1.00. If the handler throws, pay-kit still seals the hold and
   refunds. If settlement fails the desk reports `settle_failed` and keeps the reading.
 - **How does an agent find the desk?** It reads `GET /v1/terms`. `GET /openapi.json` carries the x402
   payment offers for the Pay.sh catalog, so agents can find it with `pay skills search` once the
