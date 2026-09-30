@@ -6,17 +6,15 @@ import { tmpdir } from 'node:os';
 const desk = (process.env.DESK_URL ?? 'http://127.0.0.1:8787').replace(/\/$/, '');
 const ITEM = 'research';
 
-// The mission's ceiling is the item's hold_usd from the desk's own terms, so the text never states a
-// stale number. If the desk cannot be read, the mission defers to whatever the desk publishes.
+// The mission's ceiling is the item's hold_usd from the desk's own terms, so the text never states a stale number.
 async function ceilingFor(item) {
-  try {
-    const response = await fetch(`${desk}/v1/terms`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const usd = (await response.json())?.items?.[item]?.hold_usd;
-    return usd ? `$${usd} test USDC` : "the desk's published ceiling";
-  } catch {
-    return "the desk's published ceiling";
-  }
+  const response = await fetch(`${desk}/v1/terms`);
+  if (!response.ok) throw new Error(`Could not read desk terms: HTTP ${response.status}`);
+  const terms = await response.json();
+  if (terms.network !== 'localnet') throw new Error('This Claude runner uses sandbox payments. For Devnet run: cd motto && npm run buy:devnet -- "research topic"');
+  const usd = terms.items?.[item]?.hold_usd;
+  if (!usd) throw new Error(`The desk does not publish a price for ${item}.`);
+  return `$${usd} test USDC`;
 }
 const ceiling = await ceilingFor(ITEM);
 

@@ -22,7 +22,7 @@ These checks do not establish scientific quality, semantic relevance, DOI resolu
 
 ## Run locally
 
-Use Node.js 22.13 or newer and install the [Pay.sh CLI](https://github.com/solana-foundation/pay#installation). The service defaults to the Pay.sh sandbox and binds to loopback. Node versions that treat SQLite as experimental may print a warning.
+Use Node.js 22.13 or newer. The service defaults to Solana Devnet and binds to loopback. Devnet is a public test network; its SOL and USDC have no monetary value. Node versions that treat SQLite as experimental may print a warning. The Devnet buyer uses the installed Pay SDK; the sandbox and mainnet MCP buyer uses the [Pay.sh CLI](https://github.com/solana-foundation/pay#installation).
 
 ```bash
 cd motto
@@ -31,17 +31,45 @@ lsof -i:8787
 npm start
 ```
 
-Open `http://127.0.0.1:8787/` for the purchase console. Configure an API key to protect the operator workspace; it is required on mainnet or a remote bind. `.env.example` documents the variables, but Node does not load `.env` automatically. Export them in the launching shell, or use Node's `--env-file` support after creating your local configuration.
+Open `http://127.0.0.1:8787/` for the purchase console. Configure an API key to protect the operator workspace; it is optional for loopback Devnet or sandbox, and required on mainnet or a remote bind. `.env.example` documents the variables, but Node does not load `.env` automatically. Export them in the launching shell, or use Node's `--env-file` support after creating your local configuration.
 
 ```bash
 node --env-file=.env src/server.js
 ```
 
-The local console's sandbox purchase flow is available when the Pay CLI is installed and no workspace API key is configured. It uses test funds. It is not evidence of mainnet operation.
+Devnet creates separate operator and buyer wallet files under `keys/devnet`. It checks the RPC genesis hash before using them, and keeps purchase state under `data/devnet` by default. The receipt signing key is a separate service key.
+
+Read the test wallet addresses and balances before a Devnet purchase:
+
+```bash
+npm run devnet:status
+```
+
+The operator and buyer need test SOL for fees, and the buyer needs enough Devnet USDC for the accepted quote. `npm run devnet:fund` requests test SOL airdrops; it does not supply USDC. Fund test USDC through the [Circle faucet](https://faucet.circle.com/) with the Solana Devnet buyer address. Faucet availability and funding are separate from successful delivery or settlement.
+
+To use the Pay.sh sandbox instead, stop the server on that port, check the port, and start the sandbox explicitly:
+
+```bash
+lsof -i:8787
+npm run start:sandbox
+```
+
+On loopback Devnet without an API key, the console can purchase its reviewed quote using the isolated Devnet buyer wallet after test funding. In localnet sandbox mode, the console uses the Pay CLI when installed and no workspace API key is configured. Both flows use test funds. Test-network activity is not evidence of mainnet operation.
 
 ## Buy a citation pack
 
-The direct buyer requires a limit from the caller. The amount below is illustrative; choose the limit for your task. It runs Pay's MCP `curl` tool directly and does not start a model.
+Both buyer commands require a limit from the caller. The amounts below are illustrative; choose the limit for your task. Neither command starts a model.
+
+For the default Devnet service:
+
+```bash
+npm run buy:devnet -- --max-spend 0.25 --count 3 --query "battery recycling" \
+  --desk http://127.0.0.1:8787
+```
+
+The Devnet buyer uses its isolated local signer and Pay SDK `ClientPermissions`, scoped to Devnet, the service origin, and the exact accepted quote ceiling. It does not use your mainnet wallet or increase your spending permission.
+
+For a service started with `npm run start:sandbox`, the MCP buyer defaults to sandbox:
 
 ```bash
 npm run buyer -- --max-spend 0.25 --count 3 --query "battery recycling"
@@ -56,9 +84,9 @@ npm run buyer -- --desk https://your-service.example --mainnet \
   --max-spend 0.25 --count 3 --query "battery recycling"
 ```
 
-The buyer checks the network, task, expiry, currency, and quote ceiling before requesting payment. It caps Pay at the accepted quote ceiling, which must fit your chosen limit, using a temporary policy scoped to that service origin and network. API keys travel in request headers and are not printed. The policy is removed when the process exits.
+The MCP buyer checks the network, task, expiry, currency, and quote ceiling before requesting payment. It caps Pay at the accepted quote ceiling, which must fit your chosen limit, using a temporary policy scoped to that service origin and network. API keys travel in request headers and are not printed. The policy is removed when the process exits.
 
-Pay.sh 0.29.0 documents caps for `pay mcp`, not standalone `pay curl`. That version may reject sandbox permission policies. The buyer fails closed when a policy is unsupported. It does not retry with an uncapped process. Use a Pay version that supports the selected network and permission policy. [Pay permissions](https://github.com/solana-foundation/pay#-ai-native-with-mcp).
+Pay.sh 0.29.0 documents caps for `pay mcp`, not standalone `pay curl`. Local verification of version 0.29.0 rejected a capped sandbox request with an invalid Solana network permission error. The buyer fails closed when a policy is unsupported. It does not retry with an uncapped process. Use a Pay version that supports the selected network and permission policy. [Pay permissions](https://github.com/solana-foundation/pay#-ai-native-with-mcp).
 
 Agents can use the HTTP API with their own Pay tools and enforced payment permission. The server-side quote ceiling is an additional check; an unattended buyer must also enforce its cap before signing the payment challenge.
 
@@ -74,7 +102,8 @@ Agents can use the HTTP API with their own Pay tools and enforced payment permis
 | `POST /v1/purchases/:quoteId` | Authorize the quoted USDC ceiling through x402 `upto`, execute the task, and settle |
 | `GET /v1/purchases` | Persistent purchase records, readings, and settlement results |
 | `GET /v1/purchases/:id` | One purchase record |
-| `POST /v1/console/purchases` | Local-only, unauthenticated sandbox workspace convenience purchase using test funds |
+| `GET /v1/payment-attempts` | Private authorization journal, including unresolved holds |
+| `POST /v1/console/purchases` | Local-only Devnet or sandbox purchase of a reviewed quote, using test funds; unavailable when an API key is configured |
 | `GET /healthz` | Service health and configured network |
 
 Create a quote without paying. `MAX_SPEND` is your chosen per-purchase limit; the server must not choose it for you. Set `MOTTO_API_KEY` only when the service requires authentication. Avoid shell tracing while credentials are in use.
@@ -90,31 +119,34 @@ curl --fail-with-body --silent --show-error "$DESK/v1/quotes" \
 
 The response includes `id`, normalized `input`, `max_spend_usd`, `ceiling_usd`, `unit_price_usd`, `acceptance`, `created_at`, `expires_at`, and `currency`. Prices use decimal strings with at most six fractional digits. Acceptance terms and price are fixed in the quote. Quotes default to a 120-second expiry.
 
-To make a Pay-backed purchase with the same task and caller-selected limit, use the direct buyer:
+To purchase the exact Devnet quote you inspected, copy its ID and retain your caller-selected limit:
 
 ```bash
-npm run buyer -- --desk "$DESK" --max-spend "$MAX_SPEND" \
-  --query "battery recycling" --count 3 --required-term recycling --from-year 2020
+QUOTE_ID=replace-with-the-quote-id
+npm run buy:devnet -- --desk "$DESK" --quote-id "$QUOTE_ID" --max-spend "$MAX_SPEND"
 ```
 
-This creates and validates its own fresh quote, prints a nonsecret payment-request record with the quote ID and idempotency key before starting Pay, then calls `POST /v1/purchases/:quoteId` through Pay with a UUID `Idempotency-Key`. Retain the printed key and quote ID to inspect an uncertain result. The buyer checks returned purchase fields and verifies the reading signature against the service’s published key. This verifies the operator signature rather than independent truth or onchain finality. Do not create a fresh purchase blindly after a timeout or settlement error.
+The create mode obtains and validates a fresh quote; `--quote-id` mode validates the stored quote. Both call `POST /v1/purchases/:quoteId` through Pay with a UUID `Idempotency-Key`. Retain the quote ID and idempotency key to inspect an uncertain result. Both buyers print nonsecret payment-request identifiers before starting payment. The buyer checks returned purchase fields and verifies the reading signature against the service’s published key. This verifies the operator signature rather than independent truth or onchain finality. Do not create a fresh purchase blindly after a timeout or settlement error.
 
-The payment response includes the purchase `id`, `status`, `charged_usd`, `returned_usd`, signed `reading`, `settlement_tx`, and `network`. Successful delivery is `paid`; zero-charge settlement is `refunded`. `settle_failed` and `interrupted` describe unresolved states rather than successful payments. Quotes and purchase records persist in SQLite under `DATA_DIR`.
+The payment response includes the purchase `id`, `status`, `charged_usd`, `returned_usd`, signed `reading`, `settlement_tx`, and `network`. Successful delivery is `paid`; zero-charge settlement is `refunded`. `settle_failed` and `interrupted` describe unresolved states rather than successful payments. Quotes, purchases, and payment attempts persist in SQLite under `DATA_DIR`.
+
+Before checking a submitted payment proof, the server records its channel in the authorization journal. A crash or an uncertain provider response leaves that attempt unresolved and blocks another hold for the same quote or idempotency key. Inspect `GET /v1/payment-attempts` and the payment channel before reconciling it. There is no automatic retry or reconciliation that could charge twice.
 
 ## Configuration
 
 | Variable | Default or requirement |
 | --- | --- |
 | `HOST`, `PORT` | `127.0.0.1`, `8787` |
-| `NETWORK` | `localnet`; mainnet is explicit |
-| `RPC_URL` | Sandbox RPC defaults to `https://402.surfnet.dev:8899`; mainnet requires an RPC |
-| `MOTTO_API_KEY` | At least 32 characters; required for real networks or a remote bind |
-| `PUBLIC_BASE_URL` | Trusted canonical origin for remote paid requests; HTTPS required on real networks |
-| `OPERATOR_KEY` | Required on mainnet; never commit a private key |
+| `NETWORK` | `devnet`; `localnet` sandbox and mainnet are explicit |
+| `RPC_URL` | Devnet defaults to `https://api.devnet.solana.com` with a genesis check; sandbox defaults to `https://402.surfnet.dev:8899`; mainnet requires an explicit RPC |
+| `MOTTO_API_KEY` | At least 32 characters when set; required on mainnet or a remote bind |
+| `PUBLIC_BASE_URL` | Trusted canonical origin for remote paid requests; HTTPS required on mainnet |
+| `OPERATOR_KEY` | Required on mainnet; Devnet generates its own isolated signer |
+| `DEVNET_KEYS_DIR` | `keys/devnet`, isolated operator and buyer wallets |
 | `RESEARCH_UNIT_USD` | `0.05` per accepted citation record |
 | `RESEARCH_MAX_SPEND_USD` | `1000`, upper bound on the caller's requested per-purchase limit |
 | `QUOTE_TTL_SECONDS` | `120` |
-| `DATA_DIR` | `data` |
+| `DATA_DIR` | `data/<network>`, including `data/devnet`; mainnet aliases share `data/mainnet`. Keep explicit overrides separate per network |
 | `DEVICE_KEY_PATH` | `keys/device.pem`, local Ed25519 signing key |
 
 Keep `DATA_DIR` and the signing key on durable private storage. `pay-permissions.yml` is a deny-by-default example; select your own limit and trusted origin before using it. The signed reading and settlement transaction are the current receipt; this server does not post separate memo transactions.

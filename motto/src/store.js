@@ -13,12 +13,19 @@ export class PurchaseStore {
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = FULL;
       CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, document TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS payment_attempts (
+        id TEXT PRIMARY KEY, channel_id TEXT UNIQUE NOT NULL, document TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS purchases (
         id TEXT PRIMARY KEY, quote_id TEXT UNIQUE NOT NULL,
         idempotency_key TEXT UNIQUE NOT NULL, channel_id TEXT UNIQUE NOT NULL,
         document TEXT NOT NULL
       );
     `);
+    for (const row of this.db.prepare('SELECT document FROM payment_attempts').all()) {
+      const attempt = JSON.parse(row.document);
+      if (attempt.status === 'authorizing') this.saveAttempt({ ...attempt, status: 'interrupted', updated_at: new Date().toISOString() });
+    }
     for (const row of this.db.prepare('SELECT document FROM purchases').all()) {
       const purchase = JSON.parse(row.document);
       if (['fetching', 'validating', 'settling'].includes(purchase.status)) {
@@ -63,6 +70,31 @@ export class PurchaseStore {
 
   purchases(limit = 100) {
     return this.db.prepare('SELECT document FROM purchases ORDER BY rowid DESC LIMIT ?').all(limit).map(row => JSON.parse(row.document));
+  }
+
+  saveAttempt(attempt) {
+    this.db.prepare('INSERT INTO payment_attempts (id, channel_id, document) VALUES (?, ?, ?) ON CONFLICT(channel_id) DO UPDATE SET document = excluded.document')
+      .run(attempt.id, attempt.payment_channel_id, JSON.stringify(attempt));
+    return attempt;
+  }
+
+  attemptForChannel(channelId) {
+    const row = this.db.prepare('SELECT document FROM payment_attempts WHERE channel_id = ?').get(channelId);
+    return row ? JSON.parse(row.document) : undefined;
+  }
+
+  attemptForQuote(id) {
+    const row = this.db.prepare("SELECT document FROM payment_attempts WHERE json_extract(document, '$.quote_id') = ? AND json_extract(document, '$.status') IN ('authorizing', 'interrupted', 'unconfirmed') ORDER BY rowid DESC LIMIT 1").get(id);
+    return row ? JSON.parse(row.document) : undefined;
+  }
+
+  attemptForKey(key) {
+    const row = this.db.prepare("SELECT document FROM payment_attempts WHERE json_extract(document, '$.idempotency_key') = ? AND json_extract(document, '$.status') IN ('authorizing', 'interrupted', 'unconfirmed') ORDER BY rowid DESC LIMIT 1").get(key);
+    return row ? JSON.parse(row.document) : undefined;
+  }
+
+  attempts() {
+    return this.db.prepare('SELECT document FROM payment_attempts ORDER BY rowid DESC LIMIT 100').all().map(row => JSON.parse(row.document));
   }
 
   close() { this.db.close(); }

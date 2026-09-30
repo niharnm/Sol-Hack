@@ -24,13 +24,14 @@ async function workspace(t, options = {}) {
       calls.gate = gate;
       if (options.paymentError) throw new Error('RPC failed at secret-internal-address');
       if (!request.headers.has('payment-signature')) return { status: 402, response: Response.json({ amount: gate.amount.baseUnits().toString(), scheme: 'upto' }, { status: 402 }) };
+      if (options.proofRejected) return { status: 402, response: Response.json({ code: 'settlement_pending' }, { status: 402 }) };
       if (options.verifyBlock) await new Promise(resolve => { verifyResolve = resolve; });
       return { status: 200, payment: { scheme: 'upto' }, charge: { charge: amount => calls.charges.push(amount) },
         async settle() {
           calls.settlements++;
           if (options.settleError) throw new Error('RPC timeout');
           if (options.noReceipt) return {};
-          return { 'x-payment-response': Buffer.from(JSON.stringify({ success: true, transaction: tx })).toString('base64') };
+          return { 'x-payment-response': Buffer.from(JSON.stringify({ success: true, transaction: tx, amount: options.wrongAmount ? '999999' : (calls.charges.at(-1) ?? 0n).toString(), network: options.wrongNetwork ? 'solana:wrong-network' : 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp' })).toString('base64') };
         } };
     } };
   const execute = async (quote, { onUpdate }) => {
@@ -125,7 +126,7 @@ for (const kind of ['incomplete', 'deliveryError']) {
   });
 }
 
-for (const kind of ['settleError', 'noReceipt']) {
+for (const kind of ['settleError', 'noReceipt', 'wrongAmount', 'wrongNetwork']) {
   test(`${kind} never reports payment or refund as confirmed`, async t => {
     const w = await workspace(t, { [kind]: true });
     const quote = await w.quote();
@@ -233,7 +234,7 @@ test('malformed JSON, missing idempotency, and internal payment errors are expli
   assert.equal((await w.json('/v1/purchases/' + quote.id, {})).status, 400);
   const failed = await w.purchase(quote.id);
   assert.equal(failed.status, 500);
-  assert.deepEqual(await failed.json(), { error: 'The service could not complete this request.' });
+  assert.deepEqual(await failed.json(), { error: 'The service could not complete this request. Inspect purchases and payment attempts before retrying.' });
   assert.equal(w.calls.settlements, 0);
 });
 
@@ -262,3 +263,39 @@ for (const conflict of ['key', 'channel']) {
     assert.equal(w.calls.settlements, 1);
   });
 }
+
+test('payment verification uncertainty is durably journaled and prevents a new authorization', async t => {
+  const w = await workspace(t, { paymentError: true });
+  const quote = await w.quote();
+  assert.equal((await w.purchase(quote.id)).status, 500);
+  const response = await fetch(w.base + '/v1/payment-attempts');
+  const { attempts } = await response.json();
+  assert.equal(attempts.length, 1);
+  assert.equal(attempts[0].status, 'unconfirmed');
+  assert.equal(attempts[0].quote_id, quote.id);
+  assert.equal(attempts[0].idempotency_key, undefined);
+  assert.equal((await w.purchase(quote.id, 'new-authorization-key')).status, 409);
+  assert.equal((await w.purchase((await w.quote()).id)).status, 409);
+  assert.equal(w.calls.payments, 1);
+});
+
+test('a 402 after submitted proof leaves authorization uncertain and blocks another hold', async t => {
+  const w = await workspace(t, { proofRejected: true });
+  const quote = await w.quote();
+  assert.equal((await w.purchase(quote.id)).status, 402);
+  assert.equal(w.store.attempts()[0].status, 'unconfirmed');
+  assert.equal((await w.purchase(quote.id, 'fresh-retry-key')).status, 409);
+  assert.equal(w.calls.payments, 1);
+});
+
+test('storage failures after authorization cannot skip zero-charge release', async t => {
+  const w = await workspace(t);
+  const quote = await w.quote();
+  const save = w.store.saveAttempt.bind(w.store);
+  let writes = 0;
+  w.store.saveAttempt = attempt => { if (++writes > 1) throw new Error('disk full'); return save(attempt); };
+  w.store.createPurchase = () => { throw new Error('disk full'); };
+  assert.equal((await w.purchase(quote.id)).status, 500);
+  assert.equal(w.calls.settlements, 1);
+  assert.deepEqual(w.calls.charges, []);
+});

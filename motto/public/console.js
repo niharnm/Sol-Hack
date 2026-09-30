@@ -47,6 +47,10 @@ function paymentCommand() {
   if (!quote || !/^[a-zA-Z0-9_-]{1,128}$/.test(quote.id)) throw new Error('Server returned an invalid quote identifier.');
   const url = new URL(`/v1/purchases/${quote.id}`,location.origin);
   if (!['http:','https:'].includes(url.protocol)) throw new Error('Payment requires an HTTP or HTTPS server.');
+  if (catalog.network === 'devnet') {
+    return `npm run buy:devnet -- --quote-id ${shellQuote(quote.id)} --desk ${shellQuote(location.origin)} --max-spend ${shellQuote(quote.max_spend_usd)}`;
+  }
+  if (!['localnet','mainnet','mainnet-beta'].includes(catalog.network)) throw new Error('This network needs a documented compatible payment client.');
   const network = catalog.network === 'localnet' ? '--sandbox' : '--mainnet';
   const auth = apiKey ? ' \\\n  -H "Authorization: Bearer ${MOTTO_API_KEY:?Set MOTTO_API_KEY to your server API key}"' : '';
   return `pay ${network} curl -X POST ${shellQuote(url.href)} \\\n  -H ${shellQuote('Idempotency-Key: ' + commandKey)}${auth}`;
@@ -74,7 +78,8 @@ function renderQuote() {
   if (!local) {
     try { text('purchase-command',paymentCommand()); }
     catch (error) { text('purchase-command',error.message); $('copy-command').disabled = true; }
-    text('command-auth-note',apiKey ? 'Set MOTTO_API_KEY in your terminal before running. The command uses your existing Pay.sh spending permissions. Keep this idempotency key when retrying.' : 'The command uses your existing Pay.sh spending permissions. Keep this idempotency key when retrying.');
+    text('external-instructions',catalog.network === 'devnet' ? 'Run this command from the Motto directory using your isolated devnet buyer. It purchases this reviewed quote.' : 'Pay from your agent’s own Pay.sh wallet using this command.');
+    text('command-auth-note',catalog.network === 'devnet' ? (apiKey ? 'Set MOTTO_API_KEY in your terminal before running. This uses test USDC and preserves the reviewed quote. Inspect the existing purchase before retrying.' : 'This uses test USDC and preserves the reviewed quote. Inspect the existing purchase before retrying.') : apiKey ? 'Set MOTTO_API_KEY in your terminal before running. The command uses your existing Pay.sh spending permissions. Keep this idempotency key when retrying.' : 'The command uses your existing Pay.sh spending permissions. Keep this idempotency key when retrying.');
   }
 }
 function ingest(purchase) {
@@ -160,9 +165,10 @@ function renderReceipt(purchase) {
   text('transaction',purchase?.settlement_tx || 'No transaction reported.');
   const validTx = typeof purchase?.settlement_tx === 'string' && /^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(purchase.settlement_tx);
   const mainnet = ['mainnet','mainnet-beta'].includes(purchase?.network);
-  $('explorer').hidden = !(validTx && mainnet);
-  if (validTx && mainnet) $('explorer').href = 'https://explorer.solana.com/tx/' + purchase.settlement_tx;
-  text('chain-note',purchase?.network === 'localnet' ? 'Test USDC on localnet. This record is not a real-money payment.' : 'The server reports settlement. This workspace does not independently confirm chain finality.');
+  const devnet = purchase?.network === 'devnet';
+  $('explorer').hidden = !(validTx && (mainnet || devnet));
+  if (validTx && (mainnet || devnet)) $('explorer').href = 'https://explorer.solana.com/tx/' + purchase.settlement_tx + (devnet ? '?cluster=devnet' : '');
+  text('chain-note',['localnet','devnet'].includes(purchase?.network) ? `Test USDC on ${purchase.network}. This record is not a real-money payment.` : 'The server reports settlement. This workspace does not independently confirm chain finality.');
 }
 function render() {
   renderHistory();
@@ -210,7 +216,7 @@ async function sync() {
       const unit = research?.pricing?.unit_usd ?? research?.pricing?.unit_price_usd;
       const maxUnits = research?.pricing?.max_units ?? research?.pricing?.max_count;
       if (typeof unit !== 'string' || !/^[0-9]+(?:\.[0-9]{1,6})?$/.test(unit) || Number(unit) <= 0 || !Number.isInteger(maxUnits) || maxUnits < 1 || maxUnits > 20) throw new Error('Research pricing is unavailable.');
-      text('network',catalog.network === 'localnet' ? 'Localnet · test USDC' : `${catalog.network} · USDC`);
+      text('network',catalog.network === 'localnet' ? 'Localnet · test USDC' : catalog.network === 'devnet' ? 'Devnet · test USDC' : `${catalog.network} · USDC`);
       text('unit-price',`${money(unit)} per requested source`);
       text('pricing-note',`${money(unit)} per requested source. Up to ${maxUnits} sources.`);
       text('signing-key',`Signer ${short(catalog.signing_public_key)}`);
@@ -280,6 +286,7 @@ $('copy-command').addEventListener('click',async () => {
   try {await navigator.clipboard.writeText(paymentCommand());feedback('purchase-feedback','Command copied. Run it from your agent’s Pay.sh wallet.');}
   catch (error) {feedback('purchase-feedback',`Could not copy: ${error.message} Select the command to copy it manually.`,true);}
 });
+$('new-purchase').addEventListener('click',() => {clearQuote();feedback('request-feedback');$('query').focus();$('main').scrollIntoView({block:'start'});});
 $('access-open').addEventListener('click',() => { $('api-key').value = ''; $('access-dialog').showModal(); });
 $('access-form').addEventListener('submit',event => {
   event.preventDefault();accessVersion++;apiKey = $('api-key').value.trim();$('api-key').value = '';purchases.clear();verification.clear();selectedId = undefined;clearQuote();catalog = undefined;render();$('access-dialog').close();clearTimeout(syncTimer);sync();

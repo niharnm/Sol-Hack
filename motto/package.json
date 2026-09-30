@@ -11,7 +11,11 @@
     "start": "node src/server.js",
     "bench": "node bench/generate.js && node bench/run.js",
     "buyer": "node buyer/buy.js",
-    "tunnel": "cloudflared tunnel --url http://127.0.0.1:8787"
+    "tunnel": "cloudflared tunnel --url http://127.0.0.1:8787",
+    "devnet:status": "node scripts/devnet-status.mjs",
+    "devnet:fund": "node scripts/devnet-status.mjs --airdrop",
+    "start:sandbox": "NETWORK=localnet node src/server.js",
+    "buy:devnet": "node scripts/devnet-buy.mjs"
   },
   "keywords": [],
   "author": "",

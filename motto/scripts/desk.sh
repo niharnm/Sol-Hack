@@ -7,7 +7,7 @@
 #   scripts/desk.sh status    repo HEAD next to the commit the local and public URLs report
 #   scripts/desk.sh stop      stop the desk (the Funnel stays on and answers 502 until restart)
 #
-# Environment passes through to the server (NETWORK, OPERATOR_KEY, ...). Default is the sandbox desk.
+# Environment passes through to the server (NETWORK, OPERATOR_KEY, ...). Default is the Devnet desk; set NETWORK=localnet for the sandbox.
 set -euo pipefail
 
 MOTTO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

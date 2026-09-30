@@ -14,8 +14,10 @@ import {
   signTransactionMessageWithSigners,
 } from '@solana/kit';
 import bs58 from 'bs58';
+import { devnetSigner, DEVNET_RPC } from './devnet.js';
 
-const RPC_URL = process.env.RECEIPT_RPC_URL;
+const IS_DEVNET = (process.env.NETWORK ?? 'devnet') === 'devnet';
+const RPC_URL = IS_DEVNET ? (process.env.RPC_URL || DEVNET_RPC) : process.env.RECEIPT_RPC_URL;
 // Legacy memo program: rendered by Solana Explorer and most indexers.
 const MEMO_PROGRAM = 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr';
 const AccountRole = { READONLY_SIGNER: 2 };
@@ -32,11 +34,11 @@ let ctx;
 async function context() {
   if (ctx) return ctx;
   const raw = process.env.RECEIPT_KEY;
-  if (!raw || !RPC_URL) return undefined;
-  const bytes = raw.trim().startsWith('[') ? Uint8Array.from(JSON.parse(raw)) : bs58.decode(raw.trim());
-  const signer = await createKeyPairSignerFromBytes(bytes);
+  if ((!raw && !IS_DEVNET) || !RPC_URL) return undefined;
+  const bytes = raw ? raw.trim().startsWith('[') ? Uint8Array.from(JSON.parse(raw)) : bs58.decode(raw.trim()) : undefined;
+  const signer = bytes ? await createKeyPairSignerFromBytes(bytes) : await devnetSigner('operator');
   const rpc = createSolanaRpc(RPC_URL);
-  const rpcSubscriptions = createSolanaRpcSubscriptions(process.env.RECEIPT_WS_URL ?? RPC_URL.replace(/^http/, 'ws'));
+  const rpcSubscriptions = createSolanaRpcSubscriptions((!IS_DEVNET && process.env.RECEIPT_WS_URL) || RPC_URL.replace(/^http/, 'ws'));
   ctx = { signer, rpc, send: sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions }) };
   return ctx;
 }
