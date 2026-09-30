@@ -1,0 +1,81 @@
+{
+  "network": "localnet (Pay.sh sandbox, test USDC; no Explorer link)",
+  "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581",
+  "holds": [
+    {
+      "id": "ac7fee75",
+      "item": "charger",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "1.00",
+      "status": "refunded",
+      "startedAt": 1790799384766,
+      "outcome": "already_handled",
+      "detail": "device_on_AC",
+      "charged_usd": "0.01",
+      "returned_usd": "0.99",
+      "settlementTx": "3bPfkmJsZcBWnNp3YPysCdXkDcc49WZiLymDEUq999xJzgR2V7qrwusarfHUVgWiF5apSguFcJ6PwinQBxLpEx8P",
+      "reading": {
+        "holdId": "ac7fee75",
+        "item": "charger",
+        "outcome": "already_handled",
+        "detail": "device_on_AC",
+        "raw": "Now drawing from 'AC Power' |  -InternalBattery-0 (id=23789667)\t100%; charged; 0:00 remaining present: true",
+        "ts": 1790799384788,
+        "signature": "fa17add7dcf7fda127f83f2309f833f9283ccda1a67fbd02c93fb28d9951606c8c28b6322e50db6a4a59687a2aac35bbff44b8f9d7c15c76ab98b9eb66183608",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK REFUND hold:ac7fee75 charger device_on_AC sig:fa17add7",
+      "settledAt": 1790799386251
+    },
+    {
+      "id": "1f4dc261",
+      "item": "charger",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "1.00",
+      "status": "kept",
+      "startedAt": 1790792578134,
+      "outcome": "delivered",
+      "detail": "charging_verified",
+      "charged_usd": "1.00",
+      "returned_usd": "0.00",
+      "settlementTx": "5DeywCCzf3LrGZGX8efajcHCH1mMWbxhi5kuPKzVB2fFN3521WFmGgWyy1qcaK14Zuodr8y7gTzEKNB1oXXXF2jH",
+      "reading": {
+        "holdId": "1f4dc261",
+        "item": "charger",
+        "outcome": "delivered",
+        "detail": "charging_verified",
+        "raw": "Now drawing from 'AC Power' |  -InternalBattery-0 (id=23789667)\t51%; AC attached; not charging present: true",
+        "ts": 1790792616980,
+        "signature": "6b9fde7d0f8d08f80f2b60a6f8e5559bb78375735e351cceac10af3056d00dc83cc9cbaa749ddc3546d366b563dc37573b2cf0f98179fc3c58de0671fbc1690d",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK KEEP hold:1f4dc261 charger charging_verified sig:6b9fde7d",
+      "settledAt": 1790792618099
+    },
+    {
+      "id": "4256f6d4",
+      "item": "hotspot",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "1.00",
+      "status": "kept",
+      "startedAt": 1790798957822,
+      "outcome": "delivered",
+      "detail": "device_off_venue_network",
+      "charged_usd": "1.00",
+      "returned_usd": "0.00",
+      "settlementTx": "5K7gvcKPhgtzQDobVgpT4gJ4yqvUjqicNzjsZnuvmYuBGV8oMAXCb6Frd1HG6APq5b2UFUqphgJvLESESBzrM1rd",
+      "reading": {
+        "holdId": "4256f6d4",
+        "item": "hotspot",
+        "outcome": "delivered",
+        "detail": "device_off_venue_network",
+        "raw": "gateway=10.104.0.1 venue=unset",
+        "ts": 1790798957830,
+        "signature": "e0519718ff1272ecaf5b3bb9e39825b2440b5c81e51c568a311deb0365386dcf8e9741f83f46038aa509564b9a4c00e66f7a2331f2bcca53969f5f8fff387308",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK KEEP hold:4256f6d4 hotspot device_off_venue_network sig:e0519718",
+      "settledAt": 1790798959007
+    }
+  ]
+}

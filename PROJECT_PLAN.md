@@ -293,10 +293,10 @@ Goal: a real, rerunnable result that shows we are technically better than a fron
 | B1 | Nihar | Desk server with charger hold, sandbox | Done |
 | B2 | Nihar | Keep path, wait window, hotspot | Done (all three charger outcomes verified with a real unplug) |
 | B3 | Nithin | Dashboard stage-ready (section 10) | Basic version done, polish to do |
-| B4 | Nihar | Signed readings + receipt memo | Readings done; memo needs SOL in desk wallet |
+| B4 | Nihar | Signed readings + receipt memo | Readings done. Mainnet receipt memo dropped: sandbox only (Nihar, 2026-09-30) |
 | B5 | Nihar | Claude buyer run (remote agent, pay tools only) | Done |
 | B6 | Nihar | Benchmark (section 12) + `/v1/bench` | Done (bench/results.json, served at /v1/bench) |
-| B7 | Nihar | Tunnel + one mainnet run with cents | Needs $5 USDC + 0.02 SOL |
+| B7 | Nihar | Tunnel + one mainnet run with cents | Tunnel done (https://motto.tail039d5c.ts.net). Mainnet run dropped: sandbox only (Nihar, 2026-09-30). Sandbox proof: `motto/proof/` (3 holds, signatures verified) |
 | B8 | Nihar | OpenAPI + Pay.sh catalog PR | Listing points at https://motto.tail039d5c.ts.net; live `pay catalog check` probe passes (6/6 paid endpoints return x402 upto USDC, exit 0). PR not opened: forking pay-skills needs Nihar to approve that action |
 | B9 | Nithin | Slides (middleman, benchmark, why Solana), sounds, demo script | First version done (slides/index.html, demo/DEMO_SCRIPT.md); Nithin polishes |
 | B10 | Nithin | README polish, 2 min video, submission | README and SUBMISSION.md drafted with TODO placeholders; video and links to do, submit by 15:40 |
@@ -334,7 +334,7 @@ Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full d
 | Sandbox wallet | 999 USDC on localnet (auto funded by pay) |
 | Mainnet pay account (buyer agent) | `uGYpMV8USCcDhyysbFeqFTNMMFX4dqczzg47xC33Woi` (Apple Keychain) |
 | Mainnet funds (buyer) | Done: 5.00 USDC confirmed with `pay whoami` |
-| Desk wallet (operator, fee payer, receipts) | `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair `keys/desk.json` (gitignored, mode 600). Balance 0 SOL. BLOCKER for mainnet: send ~0.02 SOL. Devnet and sandbox faucets were rate limited / down when tried |
+| Desk wallet (operator, fee payer, receipts) | `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair `keys/desk.json` (gitignored, mode 600). Balance 0 SOL. Not needed: sandbox only (Nihar, 2026-09-30). Devnet and sandbox faucets were rate limited / down when tried |
 | Permanent public URL | https://motto.tail039d5c.ts.net via Tailscale Funnel (machine name `motto`), proxies 127.0.0.1:8787. Verified from outside: `/healthz` and `/v1/terms` 200, paid routes 402. Off with `tailscale funnel --https=443 off` |
 | `cloudflared` tunnel | Fallback. Installed and tested: public URL served `/v1/terms` and returned `402` on a hold |
 | Local mainnet config | `motto/.env.mainnet` (gitignored). No secrets in it; keys passed at launch |

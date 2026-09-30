@@ -24,14 +24,20 @@ on the venue network?). The check changes. The money does not.
 The hold is Pay.sh's own x402 `upto` scheme: the agent authorizes a ceiling, the desk settles only
 what it is owed, and the rest returns automatically. No custom refund code.
 
-## Proof onchain
+## Proof (sandbox)
 
-- Refund case (device already on AC): TODO before submit: Explorer link
-- Keep case (charging verified): TODO before submit: Explorer link
-- Network check case (hotspot): TODO before submit: Explorer link
+Everything runs in the Pay.sh sandbox (test USDC on localnet), so there are no Explorer links. These
+three holds were recorded on the demo laptop on 2026-09-30 and are exported with their device-signed
+readings in `motto/proof/sandbox-holds.json`. `node motto/proof/verify.mjs` checks each signature
+against the desk's device key and that charged plus returned equals the $1.00 hold. It does not
+confirm the sandbox transactions themselves.
 
-Sandbox holds have no Explorer link and are labelled sandbox on the dashboard. TODO before submit: if
-no mainnet proof run happens, link the recorded sandbox run here and label it as such.
+- Refund (device already on AC): hold `ac7fee75`, $0.01 charged, $0.99 returned. Sandbox tx
+  `3bPfkmJsZcBWnNp3YPysCdXkDcc49WZiLymDEUq999xJzgR2V7qrwusarfHUVgWiF5apSguFcJ6PwinQBxLpEx8P`
+- Keep (charging verified after a real plug-in): hold `1f4dc261`, $1.00 charged. Sandbox tx
+  `5DeywCCzf3LrGZGX8efajcHCH1mMWbxhi5kuPKzVB2fFN3521WFmGgWyy1qcaK14Zuodr8y7gTzEKNB1oXXXF2jH`
+- Keep (hotspot, device off the venue network): hold `4256f6d4`, $1.00 charged. Sandbox tx
+  `5K7gvcKPhgtzQDobVgpT4gJ4yqvUjqicNzjsZnuvmYuBGV8oMAXCb6Frd1HG6APq5b2UFUqphgJvLESESBzrM1rd`
 
 ## How it works
 
@@ -118,13 +124,14 @@ Results are in `motto/bench/results.json` (`ranAt` 2026-09-30T18:45:33.372Z) and
 
 ## Honest limits
 
-- Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars of SOL for network fees. The mainnet path is configured but has not been exercised end to end yet.
+- Everything runs in Pay.sh's sandbox. We chose not to run on mainnet for the hackathon: the mainnet path is configured (a config switch plus a few dollars of SOL for network fees) but has never been exercised.
 - The desk runs on the demo laptop because the checks read that laptop. In production the check runs
   on the rented hardware, and the hardware signs the reading instead of the desk's device key.
 - The benchmark uses generated scenarios and simulated device states (see the note above).
-- The Pay.sh catalog listing is prepared (`motto/CATALOG.md`) but is a pull request to
-  `solana-foundation/pay-skills` that needs a permanent https URL first (TODO before submit: PR
-  link). Today the desk runs in the Pay.sh sandbox, not as a live mainnet service.
+- The Pay.sh catalog listing is prepared (`motto/CATALOG.md`) but points at https://motto.tail039d5c.ts.net
+  and passes the registry's live probe (6/6 paid endpoints). The pull request to
+  `solana-foundation/pay-skills` is not opened yet (TODO before submit: PR link, or drop this line).
+  The desk runs in the Pay.sh sandbox, not as a live mainnet service.
 
 ## Built today with
 

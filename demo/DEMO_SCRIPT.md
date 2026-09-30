@@ -32,8 +32,8 @@ Nithin narrates. Sources: `PROJECT_PLAN.md` sections 11, 12, 13, 14 and 20, `pre
   their own fullscreen window (`open slides/index.html` from the repo root) so switching is one
   keystroke. Slide keys: arrow keys or click, `f` for fullscreen.
 - Phone hotspot on. Backup video cued in a browser tab (TODO before demo: record the backup video and
-  cue it). Mainnet Explorer transaction open in a tab only if a mainnet proof run happened (TODO
-  before demo: Explorer link, or skip).
+  cue it). Sandbox only: there is no Explorer tab. `node motto/proof/verify.mjs` output in a
+  terminal tab if a judge asks for proof.
 - Sound: click the Sound button on the dashboard until it reads Sound on, then test the volume.
   Browsers block audio until a click, so click the page once after any reload. Kept and Refunded each
   play their own sound.
@@ -190,8 +190,8 @@ of SOL for network fees. Every new check is a new line in the catalog: locker, p
 The desk has settled [N] holds and returned [$X] to agents today. The check changes. The money does
 not."
 
-Read [N] and [$X] off the counters on screen. Do not say mainnet has been run: the mainnet path is
-configured but has not been exercised end to end.
+Read [N] and [$X] off the counters on screen. Do not say mainnet has been run: we stayed in the
+sandbox on purpose, and the mainnet path has never been exercised.
 
 TODO before demo: the plan says to close on "listed on Pay.sh". Say that only if the catalog PR is
 merged. If it is open say "submitted to the Pay.sh catalog". Otherwise say "ready for the Pay.sh
@@ -245,8 +245,8 @@ Plus the live counters on the dashboard. No other numbers unless they are on scr
 - **Can the desk overcharge?** No. The hold is a ceiling: the desk can settle at most the $1.00 the
   agent authorized. The agent side cap is `pay-permissions.yml` (max $1.00 per payment).
 - **Is this mainnet or real money?** Live demo runs in Pay.sh's sandbox. Going live on mainnet is a
-  config switch plus a few dollars of SOL for network fees. If a mainnet proof exists, open its
-  Explorer link (TODO before demo).
+  config switch plus a few dollars of SOL for network fees. No. We stayed in the sandbox on purpose. For
+  proof, run `node motto/proof/verify.mjs`: it checks the device signatures on three recorded holds.
 - **Is the benchmark fair?** It measures buying decisions with and without a device check. Scenarios
   are generated and seeded (`bench/generate.js`), device states are simulated from each scenario's
   hidden truth, and every run gets the same 50 scenarios. The no-desk runs see only text context, the
