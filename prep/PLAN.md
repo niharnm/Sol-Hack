@@ -1,6 +1,6 @@
-# Deposit Desk: Build Plan
+# Motto: Build Plan
 
-Working name: **Deposit Desk** (alternatives: HoldBack, Proof Desk, Refundable).
+Name: **Motto** (earlier working name: Deposit Desk; alternatives: HoldBack, Proof Desk, Refundable).
 
 One line: a deposit desk for agents buying things in the real world. The agent puts USDC on hold,
 the desk checks whether the thing is already handled, then either keeps the money as the rental or

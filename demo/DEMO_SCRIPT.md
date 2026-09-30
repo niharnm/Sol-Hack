@@ -1,8 +1,8 @@
-# Deposit Desk: 3 minute demo script
+# Motto: 3 minute demo script
 
 Seven beats, 3:00 total. The live demo runs in Pay.sh's sandbox (test USDC). Nihar runs the product.
 Nithin narrates. Sources: `PROJECT_PLAN.md` sections 11, 12, 13, 14 and 20, `prep/PITCH_AND_DEMO.md`,
-`deposit-desk/README.md`.
+`motto/README.md`.
 
 ## Who does what
 
@@ -46,7 +46,7 @@ Start the desk from the repo root. Start it while the laptop is on the venue wif
 compares against the real venue gateway, then join the phone hotspot:
 
 ```bash
-cd deposit-desk
+cd motto
 VENUE_GATEWAY="$(route -n get default | awk '/gateway:/{print $2}')" npm start     # sandbox, http://127.0.0.1:8787
 ```
 
@@ -65,7 +65,7 @@ card on the dashboard. The retry settles in about 4 seconds. So run the pre-flig
 before walking up, and if a hold on stage takes longer than 15 seconds, say "sandbox is warming up"
 and rerun the same command.
 
-Test holds show up on the dashboard counters, and the hold log (`deposit-desk/data/holds.jsonl`) is
+Test holds show up on the dashboard counters, and the hold log (`motto/data/holds.jsonl`) is
 reloaded when the desk starts, so the counters survive a restart. That is fine: at the close read the
 live numbers off the screen, never a number you did not see.
 
@@ -88,7 +88,8 @@ pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot
 Optional public URL, if a judge or the submission needs it:
 
 ```bash
-cloudflared tunnel --url http://127.0.0.1:8787
+tailscale funnel --bg 8787    # permanent: https://motto.tail039d5c.ts.net
+# fallback, temporary URL: cloudflared tunnel --url http://127.0.0.1:8787
 ```
 
 ## The script
@@ -159,11 +160,11 @@ Narrate whichever happens.
 ### Beat 5. Benchmark (1:50 to 2:15)
 
 Screen: slide 3, or click the Benchmark button in the dashboard header to jump to its benchmark
-chart. Every number comes from `deposit-desk/bench/results.json`.
+chart. Every number comes from `motto/bench/results.json`.
 
 Nithin: "Fifty generated scenarios, the same for every run. Fable 5.1 alone wasted sixteen dollars.
 Sonnet 5 alone wasted seven and missed sixteen real needs. Sonnet 5 with the desk wasted nineteen
-cents and missed none. A cheaper model with Deposit Desk beat the frontier model on wasted spend.
+cents and missed none. A cheaper model with Motto beat the frontier model on wasted spend.
 Scenarios are generated and device states are simulated; the live desk reads the real device."
 
 ### Beat 6. Why the middleman, why Solana (2:15 to 2:40)
@@ -213,13 +214,13 @@ Sandbox holds have no Explorer link; say so if asked.
 
 ## Numbers you may say
 
-From `deposit-desk/bench/results.json` (50 scenarios, 31 real needs):
+From `motto/bench/results.json` (50 scenarios, 31 real needs):
 
 | Run | Wasted | Missed needs | Needs met |
 |---|---|---|---|
 | Fable 5.1 alone | $16.00 | 2 | 93.5% |
 | Sonnet 5 alone | $7.00 | 16 | 48.4% |
-| Sonnet 5 + Deposit Desk | $0.19 | 0 | 100% |
+| Sonnet 5 + Motto | $0.19 | 0 | 100% |
 
 Plus the live counters on the dashboard. No other numbers unless they are on screen or in
 `PROJECT_PLAN.md`.

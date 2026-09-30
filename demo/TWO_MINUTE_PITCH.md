@@ -38,7 +38,7 @@ The verification script checks the reading against the desk's advertised public 
 ## Start the local server if needed
 
 ```bash
-cd deposit-desk
+cd motto
 npm start
 ```
 

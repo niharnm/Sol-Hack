@@ -1,8 +1,8 @@
-# Deposit Desk
+# Motto
 
 > An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest. A deposit desk for agents buying things in the real world, built on Pay.sh x402 `upto` holds and settled in USDC on Solana.
 
-**Live:** TODO before submit: live URL | **Video (2 min):** TODO before submit: video link | **Pay.sh listing / PR:** TODO before submit: PR link
+**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh listing / PR:** TODO before submit: PR link
 
 **Repo:** https://github.com/niharnm/Sol-Hack (TODO before submit: the repo is private today, make it public or add the judges) | **Team:** Nihar (product), Nithin (design, polish, demo)
 
@@ -38,7 +38,7 @@ no mainnet proof run happens, link the recorded sandbox run here and label it as
 1. A buyer agent (Claude via `pay claude` or `pay mcp`) reads the desk's terms at `GET /v1/terms`:
    the items, the $1.00 hold, the $0.01 check fee, the check question and the refund rules.
    `GET /openapi.json` carries the x402 offers for the Pay.sh catalog. The listing is prepared in
-   `deposit-desk/CATALOG.md` and `deposit-desk/catalog/` (PR: TODO before submit: PR link).
+   `motto/CATALOG.md` and `motto/catalog/` (PR: TODO before submit: PR link).
 2. The agent calls `POST /v1/rent/<item>`. The desk answers `402` with an x402 `upto` offer for $1.00
    USDC, the agent's `pay` client signs and retries, and `@solana/pay-kit` escrows the $1.00 ceiling.
    That is the hold.
@@ -50,7 +50,7 @@ no mainnet proof run happens, link the recorded sandbox run here and label it as
    shows every hold live.
 
 ```
-Claude (buyer)  --pay claude / pay mcp-->  Deposit Desk API (Express + @solana/pay-kit)
+Claude (buyer)  --pay claude / pay mcp-->  Motto API (Express + @solana/pay-kit)
                                               | 402 upto offer, verify, escrow
                                               | run check (pmset / route) + sign reading
                                               | charge(actual) -> settle -> refund rest
@@ -65,7 +65,7 @@ Dashboard (static page, live via SSE) <-------+   optional receipt tx with memo 
 The sandbox needs no wallet. The `pay` commands need the Pay.sh CLI (`brew install pay`).
 
 ```bash
-cd deposit-desk
+cd motto
 npm install
 npm start                                   # http://127.0.0.1:8787 dashboard
 curl -i -X POST http://127.0.0.1:8787/v1/rent/charger          # 402 with an x402 upto offer
@@ -85,18 +85,18 @@ echo "You are a personal agent running in the cloud for your user. Your user's l
 
 ## Benchmark
 
-A cheaper model with the desk beat the frontier model on wasted spend: Sonnet 5 with Deposit Desk
+A cheaper model with the desk beat the frontier model on wasted spend: Sonnet 5 with Motto
 wasted $0.19 and missed no real need, Fable 5.1 alone wasted $16.00. Same 50 generated purchase
 scenarios for every run, 31 of them real needs. The two runs without the desk choose between buy and
 skip from text context. The third can also put a hold on the desk, and it held in all 50 scenarios.
-Results are in `deposit-desk/bench/results.json` (`ranAt` 2026-09-30T18:45:33.372Z) and served at
+Results are in `motto/bench/results.json` (`ranAt` 2026-09-30T18:45:33.372Z) and served at
 `GET /v1/bench`.
 
 | Run | Model | Scenarios | Wasted (USD) | Missed needs | Real needs | Needs met | Total spend (USD) | Model cost (USD) | Avg latency (ms) |
 |---|---|---|---|---|---|---|---|---|---|
 | Fable 5.1 alone | `claude-fable-5-1` | 50 | 16.00 | 2 | 31 | 93.5% | 45.00 | 1.1504 | 5828 |
 | Sonnet 5 alone | `claude-sonnet-5` | 50 | 7.00 | 16 | 31 | 48.4% | 22.00 | 0.1095 | 3717 |
-| Sonnet 5 + Deposit Desk | `claude-sonnet-5` | 50 | 0.19 | 0 | 31 | 100% | 31.19 | 0.1207 | 3770 |
+| Sonnet 5 + Motto | `claude-sonnet-5` | 50 | 0.19 | 0 | 31 | 100% | 31.19 | 0.1207 | 3770 |
 
 > Scenarios are generated (bench/generate.js, seeded). Device states are simulated from each scenario's hidden truth; in the live product the desk reads the real device.
 
@@ -122,7 +122,7 @@ Results are in `deposit-desk/bench/results.json` (`ranAt` 2026-09-30T18:45:33.37
 - The desk runs on the demo laptop because the checks read that laptop. In production the check runs
   on the rented hardware, and the hardware signs the reading instead of the desk's device key.
 - The benchmark uses generated scenarios and simulated device states (see the note above).
-- The Pay.sh catalog listing is prepared (`deposit-desk/CATALOG.md`) but is a pull request to
+- The Pay.sh catalog listing is prepared (`motto/CATALOG.md`) but is a pull request to
   `solana-foundation/pay-skills` that needs a permanent https URL first (TODO before submit: PR
   link). Today the desk runs in the Pay.sh sandbox, not as a live mainnet service.
 

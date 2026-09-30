@@ -1,4 +1,4 @@
-# Deposit Desk (README template, fill at 15:15)
+# Motto (README template, fill at 15:15)
 
 > Agents only pay for things that actually happened. A deposit desk for agents buying the real
 > world, sold on Pay.sh, settled on Solana with the reason written onchain.

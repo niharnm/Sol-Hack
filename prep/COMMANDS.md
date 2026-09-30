@@ -44,9 +44,9 @@ curl -fsS http://127.0.0.1:1402/__402/health
 
 ```yaml
 # yaml-language-server: $schema=https://pay.sh/docs-assets/provider.schema.json
-name: deposit-desk
-subdomain: deposit-desk
-title: 'Deposit Desk'
+name: motto
+subdomain: motto
+title: 'Motto'
 description: 'Refundable holds for agents renting real-world things. Pay only if the check says you need it.'
 category: shopping
 version: v1
@@ -129,8 +129,8 @@ MCP tools exposed: `pay.search`, `pay.endpoints`, `pay.curl`, `pay.balance`, `pa
 ## Catalog listing (pay-skills PR)
 
 ```bash
-pay catalog scaffold <org>/deposit-desk https://<deployed-host>/openapi.json
-pay catalog check providers/<org>/deposit-desk/PAY.md     # expect: PAY.md check successful
+pay catalog scaffold <org>/motto https://<deployed-host>/openapi.json
+pay catalog check providers/<org>/motto/PAY.md     # expect: PAY.md check successful
 pay skills search "deposit"                               # after merge
 ```
 
@@ -143,8 +143,8 @@ Draft frontmatter:
 
 ```yaml
 ---
-name: deposit-desk
-title: "Deposit Desk"
+name: motto
+title: "Motto"
 description: "Refundable holds for AI agents renting real-world things like chargers and hotspots. The desk checks whether the need is already met and refunds the hold minus a one cent check fee, or keeps it as the rental."
 use_case: "Use when an agent needs power or connectivity for a device and should only pay if the device does not already have it."
 category: shopping

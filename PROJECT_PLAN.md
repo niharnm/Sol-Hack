@@ -1,4 +1,4 @@
-# Deposit Desk: Full Project Plan
+# Motto: Full Project Plan
 
 Status: plan updated with benchmark, pitch and team split. Build starts when both of us say ready.
 Event: Agent Hackathon, Solana Foundation + The AI Collective, San Francisco, 2026-09-30.
@@ -17,8 +17,8 @@ Two people push to `main` at the same time, so every change starts and ends with
 
 | Area | Owner | Files |
 |---|---|---|
-| Product: desk server, checks, payments, receipts, benchmark, mainnet, Pay.sh catalog | Nihar | `deposit-desk/src/`, `deposit-desk/bench/`, `deposit-desk/package.json`, `deposit-desk/.env.example` |
-| Look and demo: dashboard, sounds, animations, slides, video, README polish, demo script, QA of the full flow | Nithin | `deposit-desk/public/`, `slides/`, `demo/`, `deposit-desk/README.md`, `prep/PITCH_AND_DEMO.md` |
+| Product: desk server, checks, payments, receipts, benchmark, mainnet, Pay.sh catalog | Nihar | `motto/src/`, `motto/bench/`, `motto/package.json`, `motto/.env.example` |
+| Look and demo: dashboard, sounds, animations, slides, video, README polish, demo script, QA of the full flow | Nithin | `motto/public/`, `slides/`, `demo/`, `motto/README.md`, `prep/PITCH_AND_DEMO.md` |
 | This plan | Both | `PROJECT_PLAN.md` (small edits, pull right before editing) |
 
 Contract between the two halves: the dashboard only depends on the API in section 7 (`/v1/terms`,
@@ -42,7 +42,7 @@ Rules:
 - Conflict: stop, resolve it keeping both people's intent, run the app, then push. Never force push. Never `git reset --hard` on shared history.
 - `package-lock.json`: only Nihar adds dependencies. Nithin asks if a package is needed.
 - Secrets never go in Git: `.env`, `keys/`, keypair files are gitignored. Check `git status` before committing.
-- Nithin setup: `git clone https://github.com/niharnm/Sol-Hack && cd Sol-Hack/deposit-desk && npm install && npm start`, then open http://127.0.0.1:8787. The sandbox needs no wallet; install `pay` (`brew install pay`) to trigger holds with `pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger`.
+- Nithin setup: `git clone https://github.com/niharnm/Sol-Hack && cd Sol-Hack/motto && npm install && npm start`, then open http://127.0.0.1:8787. The sandbox needs no wallet; install `pay` (`brew install pay`) to trigger holds with `pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger`.
 
 ---
 
@@ -151,7 +151,7 @@ Edge cases to handle:
 ## 6. Architecture
 
 ```
-Claude (buyer)  --pay claude / pay mcp-->  Deposit Desk API (Express + @solana/pay-kit)
+Claude (buyer)  --pay claude / pay mcp-->  Motto API (Express + @solana/pay-kit)
                                               | 402 upto offer, verify, escrow
                                               | run check (pmset / route) + sign reading
                                               | charge(actual) -> settle -> refund rest
@@ -203,7 +203,7 @@ Addresses: USDC mainnet `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, devnet
 
 - Build and test: `pay --sandbox curl -X POST <url>/v1/rent/charger`.
 - Demo: Claude runs as a remote agent with pay tools only (no shell), so it cannot check the device
-  itself and relies on the desk. Exact command in `deposit-desk/README.md`. Verified: Claude read the
+  itself and relies on the desk. Exact command in `motto/README.md`. Verified: Claude read the
   terms, held $1, got the signed reading, $0.99 came back, and called the hold "cheap insurance".
   Without the tool limit, Claude ran `pmset` itself and skipped renting, which is why the buyer is
   positioned as a cloud agent acting for a user's device.
@@ -233,7 +233,7 @@ applause. So the demo is built for energy and clarity, and every beat must make 
 2. Refund (35s): ask the room "Is this laptop plugged in? Should the agent pay?" Claude (cloud agent, pay tools only) holds $1, desk checks, $0.99 slides back. Coin sound.
 3. Keep (40s): unplug, hand the cable to someone in the audience. Claude holds $1, audience member plugs in, dashboard flips to KEPT. Cash register sound.
 4. Second check (20s): hotspot, same desk, different check. "The check changes. The money does not."
-5. Benchmark (25s): chart from section 12. "A cheaper model with Deposit Desk beat the frontier model on wasted spend."
+5. Benchmark (25s): chart from section 12. "A cheaper model with Motto beat the frontier model on wasted spend."
 6. Why middleman + Solana (25s): section 13 story in three lines.
 7. Close (20s): real product, listed on Pay.sh, every new check is a new line in the catalog. End on the live counter.
 
@@ -247,7 +247,7 @@ Goal: a real, rerunnable result that shows we are technically better than a fron
   repo (`bench/scenarios.json`): phone may need a charger, laptop may need a hotspot, and so on. Each has
   a hidden ground-truth device state (already handled or real need).
 - **Agent A (frontier alone):** Fable 5.1 (`claude-fable-5-1`) gets the user's request and context text and decides buy or skip.
-- **Agent B (ours):** Sonnet 5 (`claude-sonnet-5`) with the Deposit Desk hold: it holds, the desk checks the (simulated) device state, settles.
+- **Agent B (ours):** Sonnet 5 (`claude-sonnet-5`) with the Motto hold: it holds, the desk checks the (simulated) device state, settles.
 - **Metrics:** dollars wasted on unneeded purchases, real needs missed, total spend, cost per decision (model tokens + fees), latency.
 - **Why we win:** no model can see whether a phone is plugged in; the frontier model guesses, the desk checks.
 - **Honesty:** the slide says scenarios are generated and device states are simulated in the benchmark.
@@ -297,7 +297,7 @@ Goal: a real, rerunnable result that shows we are technically better than a fron
 | B5 | Nihar | Claude buyer run (remote agent, pay tools only) | Done |
 | B6 | Nihar | Benchmark (section 12) + `/v1/bench` | Done (bench/results.json, served at /v1/bench) |
 | B7 | Nihar | Tunnel + one mainnet run with cents | Needs $5 USDC + 0.02 SOL |
-| B8 | Nihar | OpenAPI + Pay.sh catalog PR | Listing prepared and passes `pay catalog check` (deposit-desk/catalog, CATALOG.md); PR needs a permanent https URL |
+| B8 | Nihar | OpenAPI + Pay.sh catalog PR | Listing points at https://motto.tail039d5c.ts.net; live `pay catalog check` probe passes (2/2 paid endpoints return x402 upto USDC). PR not opened yet |
 | B9 | Nithin | Slides (middleman, benchmark, why Solana), sounds, demo script | First version done (slides/index.html, demo/DEMO_SCRIPT.md); Nithin polishes |
 | B10 | Nithin | README polish, 2 min video, submission | README and SUBMISSION.md drafted with TODO placeholders; video and links to do, submit by 15:40 |
 
@@ -329,36 +329,39 @@ Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full d
 | Item | Status |
 |---|---|
 | Node 26, npm, pnpm, bun, python3, gh, docker, vercel CLI, claude CLI | Installed |
-| Project dependencies (`deposit-desk/node_modules`) | Installed, server boots |
+| Project dependencies (`motto/node_modules`) | Installed, server boots |
 | `pay` CLI 0.29.0 | Installed, sandbox paid calls verified |
 | Sandbox wallet | 999 USDC on localnet (auto funded by pay) |
 | Mainnet pay account (buyer agent) | `uGYpMV8USCcDhyysbFeqFTNMMFX4dqczzg47xC33Woi` (Apple Keychain) |
 | Mainnet funds (buyer) | Done: 5.00 USDC confirmed with `pay whoami` |
 | Desk wallet (operator, fee payer, receipts) | `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair `keys/desk.json` (gitignored, mode 600). Balance 0 SOL. BLOCKER for mainnet: send ~0.02 SOL. Devnet and sandbox faucets were rate limited / down when tried |
-| `cloudflared` tunnel | Installed and tested: public URL served `/v1/terms` and returned `402` on a hold |
-| Local mainnet config | `deposit-desk/.env.mainnet` (gitignored). No secrets in it; keys passed at launch |
-| Agent spending cap | `deposit-desk/pay-permissions.yml` (max $1.00 per payment) |
+| Permanent public URL | https://motto.tail039d5c.ts.net via Tailscale Funnel (machine name `motto`), proxies 127.0.0.1:8787. Verified from outside: `/healthz` and `/v1/terms` 200, paid routes 402. Off with `tailscale funnel --https=443 off` |
+| `cloudflared` tunnel | Fallback. Installed and tested: public URL served `/v1/terms` and returned `402` on a hold |
+| Local mainnet config | `motto/.env.mainnet` (gitignored). No secrets in it; keys passed at launch |
+| Agent spending cap | `motto/pay-permissions.yml` (max $1.00 per payment) |
 | Venue gateway | `10.104.0.1` set as `VENUE_GATEWAY`; confirm it is the venue wifi |
 | Nithin repo access | Invite sent to `nithinaru`, pending acceptance |
 | Solana CLI | Not installed (Homebrew lock). Not needed |
-| Benchmark | Done, results in `deposit-desk/bench/results.json` |
-| Tests | `npm test` in deposit-desk: 17 tests (checks, signatures, HTTP API smoke) |
+| Benchmark | Done, results in `motto/bench/results.json` |
+| Tests | `npm test` in motto: 17 tests (checks, signatures, HTTP API smoke) |
 | Hold log | `DATA_DIR/holds.jsonl` reloaded on start, counters survive a restart; holds cut off by a restart show as `interrupted` |
 
 ## 20. Launch commands (demo day)
 
 ```bash
-cd deposit-desk
+cd motto
 # Sandbox (default, used for the live demo)
 npm start
 # Mainnet (one proof transaction), once the desk wallet has SOL
 OPERATOR_KEY="$(cat ../keys/desk.json)" RECEIPT_KEY="$(cat ../keys/desk.json)" node --env-file=.env.mainnet src/server.js
-# Public URL
+# Public URL (permanent): https://motto.tail039d5c.ts.net
+tailscale funnel --bg 8787
+# Fallback, temporary URL
 cloudflared tunnel --url http://127.0.0.1:8787
 # Trigger a hold by hand
 pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger
 pay --mainnet curl -X POST http://127.0.0.1:8787/v1/rent/charger
-# Claude as the buyer: see deposit-desk/README.md (pay tools only, no shell)
+# Claude as the buyer: see motto/README.md (pay tools only, no shell)
 # Rerun benchmark
 npm run bench
 ```
