@@ -325,14 +325,35 @@ Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full d
 
 | Item | Status |
 |---|---|
-| Node 26, npm, pnpm, bun, python3, gh, docker, vercel CLI | Installed |
-| `pay` CLI 0.29.0 | Installed, sandbox paid call verified |
-| Sandbox wallet | Created by pay, 999 USDC on localnet |
-| Mainnet pay account (buyer agent) | Created: `uGYpMV8USCcDhyysbFeqFTNMMFX4dqczzg47xC33Woi` (Apple Keychain), confirmed with `pay whoami` |
-| Mainnet funds | TODO Nihar: `pay topup` about $5 USDC |
-| `cloudflared` (public URL tunnel) | Installed 2026.9.3 |
-| Solana CLI | Not installed (Homebrew lock). Optional; wallets can be made with `pay account new` |
-| Desk wallet (operator + fee payer + receipt) | Created: `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair at `keys/desk.json` (gitignored, mode 600). TODO: send it ~0.02 SOL on mainnet for fees |
-| Venue gateway | Current reading `10.104.0.1`; confirm it is the venue wifi |
-| Git repo + remote | Pushed to Sol-Hack `main`; follow section 0 for every change |
-| Vercel CLI | 59.11.2 (outdated; `npm i -g vercel@latest` if we deploy there) |
+| Node 26, npm, pnpm, bun, python3, gh, docker, vercel CLI, claude CLI | Installed |
+| Project dependencies (`deposit-desk/node_modules`) | Installed, server boots |
+| `pay` CLI 0.29.0 | Installed, sandbox paid calls verified |
+| Sandbox wallet | 999 USDC on localnet (auto funded by pay) |
+| Mainnet pay account (buyer agent) | `uGYpMV8USCcDhyysbFeqFTNMMFX4dqczzg47xC33Woi` (Apple Keychain) |
+| Mainnet funds (buyer) | Done: 5.00 USDC confirmed with `pay whoami` |
+| Desk wallet (operator, fee payer, receipts) | `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair `keys/desk.json` (gitignored, mode 600). Balance 0 SOL. BLOCKER for mainnet: send ~0.02 SOL. Devnet and sandbox faucets were rate limited / down when tried |
+| `cloudflared` tunnel | Installed and tested: public URL served `/v1/terms` and returned `402` on a hold |
+| Local mainnet config | `deposit-desk/.env.mainnet` (gitignored). No secrets in it; keys passed at launch |
+| Agent spending cap | `deposit-desk/pay-permissions.yml` (max $1.00 per payment) |
+| Venue gateway | `10.104.0.1` set as `VENUE_GATEWAY`; confirm it is the venue wifi |
+| Nithin repo access | Invite sent to `nithinaru`, pending acceptance |
+| Solana CLI | Not installed (Homebrew lock). Not needed |
+| Benchmark | Done, results in `deposit-desk/bench/results.json` |
+
+## 20. Launch commands (demo day)
+
+```bash
+cd deposit-desk
+# Sandbox (default, used for the live demo)
+npm start
+# Mainnet (one proof transaction), once the desk wallet has SOL
+OPERATOR_KEY="$(cat ../keys/desk.json)" RECEIPT_KEY="$(cat ../keys/desk.json)" node --env-file=.env.mainnet src/server.js
+# Public URL
+cloudflared tunnel --url http://127.0.0.1:8787
+# Trigger a hold by hand
+pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger
+pay --mainnet curl -X POST http://127.0.0.1:8787/v1/rent/charger
+# Claude as the buyer: see deposit-desk/README.md (pay tools only, no shell)
+# Rerun benchmark
+npm run bench
+```

@@ -1,0 +1,5 @@
+# Spending cap for the buyer agent on stage: pay mcp --permissions ./pay-permissions.yml
+origins: [http://127.0.0.1:8787]
+networks: [mainnet, localnet]
+max_payment: "$1.00"
+allow_any_asset: false
