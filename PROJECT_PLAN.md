@@ -180,7 +180,9 @@ The desk runs on the demo laptop because the checks read that laptop. A public U
 | `GET /v1/holds` | free | Hold log |
 | `GET /v1/events` | free | Server-sent events for the dashboard |
 | `GET /openapi.json` | free | OpenAPI with `x-payment-info` offers, for the Pay.sh catalog |
-| `GET /v1/bench` | free | Benchmark results for the dashboard chart (to build, section 12) |
+| `GET /v1/bench` | free | Benchmark summary for the dashboard chart (section 12) |
+| `GET /v1/holds/:id` | free | One hold by id, JSON 404 if unknown |
+| `GET /healthz` | free | `ok`, `network`, `uptime_s`, `holds` |
 
 Response to the agent: `hold_id, item, outcome, decision (kept|refunded), charged_usd, returned_usd,
 reason (plain English rule), signed_reading, settlement_tx, network`.
@@ -295,11 +297,11 @@ Goal: a real, rerunnable result that shows we are technically better than a fron
 | B3 | Nithin | Dashboard stage-ready (section 10) | Basic version done, polish to do |
 | B4 | Nihar | Signed readings + receipt memo | Readings done; memo needs SOL in desk wallet |
 | B5 | Nihar | Claude buyer run (remote agent, pay tools only) | Done |
-| B6 | Nihar | Benchmark (section 12) + `/v1/bench` | To do |
+| B6 | Nihar | Benchmark (section 12) + `/v1/bench` | Done (bench/results.json, served at /v1/bench) |
 | B7 | Nihar | Tunnel + one mainnet run with cents | Needs $5 USDC + 0.02 SOL |
-| B8 | Nihar | OpenAPI + Pay.sh catalog PR | OpenAPI done, PR to do |
-| B9 | Nithin | Slides (middleman, benchmark, why Solana), sounds, demo script | To do |
-| B10 | Nithin | README polish, 2 min video, submission | To do, submit by 15:40 |
+| B8 | Nihar | OpenAPI + Pay.sh catalog PR | Listing prepared and passes `pay catalog check` (deposit-desk/catalog, CATALOG.md); PR needs a permanent https URL |
+| B9 | Nithin | Slides (middleman, benchmark, why Solana), sounds, demo script | First version done (slides/index.html, demo/DEMO_SCRIPT.md); Nithin polishes |
+| B10 | Nithin | README polish, 2 min video, submission | README and SUBMISSION.md drafted with TODO placeholders; video and links to do, submit by 15:40 |
 
 Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full demo at least once before freeze.
 
@@ -342,6 +344,8 @@ Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full d
 | Nithin repo access | Invite sent to `nithinaru`, pending acceptance |
 | Solana CLI | Not installed (Homebrew lock). Not needed |
 | Benchmark | Done, results in `deposit-desk/bench/results.json` |
+| Tests | `npm test` in deposit-desk: 17 tests (checks, signatures, HTTP API smoke) |
+| Hold log | `DATA_DIR/holds.jsonl` reloaded on start, counters survive a restart; holds cut off by a restart show as `interrupted` |
 
 ## 20. Launch commands (demo day)
 
