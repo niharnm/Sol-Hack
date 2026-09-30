@@ -1,11 +1,48 @@
 # Deposit Desk: Full Project Plan
 
-Status: plan approved, building from `deposit-desk/`.
+Status: plan updated with benchmark, pitch and team split. Build starts when both of us say ready.
 Event: Agent Hackathon, Solana Foundation + The AI Collective, San Francisco, 2026-09-30.
-Repo: https://github.com/niharnm/Sol-Hack (private, empty, remote connected, nothing pushed).
+Repo: https://github.com/niharnm/Sol-Hack (private). Team: Nihar (product), Nithin (design, polish, demo).
 
 Detail sheets from research live in `prep/` (COMMANDS.md, CHECKS_AND_CHAIN.md, PITCH_AND_DEMO.md,
 SUBMISSION_TEMPLATE.md, PLAN.md). This file is the single source of truth; it supersedes prep/PLAN.md.
+
+---
+
+## 0. Team and Git workflow (read first)
+
+Two people push to `main` at the same time, so every change starts and ends with a pull.
+
+**Ownership (who edits what):**
+
+| Area | Owner | Files |
+|---|---|---|
+| Product: desk server, checks, payments, receipts, benchmark, mainnet, Pay.sh catalog | Nihar | `deposit-desk/src/`, `deposit-desk/bench/`, `deposit-desk/package.json`, `deposit-desk/.env.example` |
+| Look and demo: dashboard, sounds, animations, slides, video, README polish, demo script, QA of the full flow | Nithin | `deposit-desk/public/`, `slides/`, `demo/`, `deposit-desk/README.md`, `prep/PITCH_AND_DEMO.md` |
+| This plan | Both | `PROJECT_PLAN.md` (small edits, pull right before editing) |
+
+Contract between the two halves: the dashboard only depends on the API in section 7 (`/v1/terms`,
+`/v1/holds`, `/v1/events`, `/v1/bench`). If Nihar changes a response shape, update section 7 in the
+same commit and tell Nithin.
+
+**Every time, in this order:**
+
+```bash
+git pull --rebase                 # before you start anything
+# ...work in your own files...
+git add <your files>              # never `git add -A` blindly; check `git status` first
+git commit -m "short clear message"
+git pull --rebase                 # again, right before pushing
+git push
+```
+
+Rules:
+- Pull before starting work, before every commit, and before every push. Commit and push small and often (every 20 to 30 minutes at most).
+- Stay in your own files. If you must touch the other person's file, message them first.
+- Conflict: stop, resolve it keeping both people's intent, run the app, then push. Never force push. Never `git reset --hard` on shared history.
+- `package-lock.json`: only Nihar adds dependencies. Nithin asks if a package is needed.
+- Secrets never go in Git: `.env`, `keys/`, keypair files are gitignored. Check `git status` before committing.
+- Nithin setup: `git clone https://github.com/niharnm/Sol-Hack && cd Sol-Hack/deposit-desk && npm install && npm start`, then open http://127.0.0.1:8787. The sandbox needs no wallet; install `pay` (`brew install pay`) to trigger holds with `pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger`.
 
 ---
 
@@ -143,6 +180,7 @@ The desk runs on the demo laptop because the checks read that laptop. A public U
 | `GET /v1/holds` | free | Hold log |
 | `GET /v1/events` | free | Server-sent events for the dashboard |
 | `GET /openapi.json` | free | OpenAPI with `x-payment-info` offers, for the Pay.sh catalog |
+| `GET /v1/bench` | free | Benchmark results for the dashboard chart (to build, section 12) |
 
 Response to the agent: `hold_id, item, outcome, decision (kept|refunded), charged_usd, returned_usd,
 reason (plain English rule), signed_reading, settlement_tx, network`.
@@ -175,44 +213,94 @@ Addresses: USDC mainnet `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, devnet
   `solana-foundation/pay-skills`) so Claude finds it with `pay skills search`. Needs a production https
   URL; a PR can be opened even if not merged by 17:00.
 
-## 10. Dashboard
+## 10. Dashboard (Nithin)
 
-Single page served by the desk: counters (holds, kept, refunded, dollars returned to agents), a live
-card per hold (item, status, check detail, device signature, settlement and receipt links to Explorer
-on mainnet). Dark, large type, readable from the back of the room.
+Single page served by the desk at `/`. Current version works (counters, live hold cards via SSE).
+Nithin owns making it stage ready:
+- Readable from the back of the room: huge counters for holds, kept, refunded, and "$ returned to agents".
+- Big state change per hold: CHECKING, then KEPT (amber) or REFUNDED (green), with an animation.
+- Sound: cash register on KEPT, a "coin back" sound on REFUNDED.
+- Explorer links on mainnet holds; sandbox holds clearly labelled "sandbox".
+- A benchmark view (section 12) with the wasted-spend chart.
+- Optional "ask the room" screen: "Is this laptop plugged in? Should the agent pay?"
 
-## 11. Demo (3 minutes)
+## 11. Demo (3 minutes, Nithin owns script and polish, Nihar runs the product)
 
-1. Hook (15s): agents are starting to buy the real world; they should not pay for things that already happened.
-2. Refund (40s): laptop plugged in, Claude rents a charger, check says already on AC, $0.99 back, Explorer memo.
-3. Keep (40s): unplug, Claude rents again, plug in within the window, charging verified, $1 kept.
-4. Second check (25s): on phone hotspot, Claude rents venue connectivity, rental kept; switch to venue wifi, refunded.
-5. Why Solana (20s): sub-cent settlement with the reason onchain; card fee would eat 30% of a $1 hold; capped by the user's allowance.
-6. Business and close (40s): the desk is the company, every check is a catalog line, 1 cent per hold; close on "N holds settled, $X returned today".
+Judges and the room decide together; at the YC hackathon the winners were the demos that got the most
+applause. So the demo is built for energy and clarity, and every beat must make sense to a non-expert.
 
-Backups: phone hotspot, backup video, earlier Explorer tx open, model warmed.
+1. Hook (15s): "Agents are starting to spend money in the real world. They should never pay for something that already happened."
+2. Refund (35s): ask the room "Is this laptop plugged in? Should the agent pay?" Claude (cloud agent, pay tools only) holds $1, desk checks, $0.99 slides back. Coin sound.
+3. Keep (40s): unplug, hand the cable to someone in the audience. Claude holds $1, audience member plugs in, dashboard flips to KEPT. Cash register sound.
+4. Second check (20s): hotspot, same desk, different check. "The check changes. The money does not."
+5. Benchmark (25s): chart from section 12. "A cheaper model with Deposit Desk beat the frontier model on wasted spend."
+6. Why middleman + Solana (25s): section 13 story in three lines.
+7. Close (20s): real product, listed on Pay.sh, every new check is a new line in the catalog. End on the live counter.
 
-## 12. Build plan (start only after this plan is approved)
+Backups: phone hotspot, recorded backup video, mainnet Explorer tx open in a tab, model warmed.
 
-| Step | Output | Done when |
-|---|---|---|
-| B1 | Desk server with charger gate, sandbox | `pay --sandbox curl` returns a settled refund |
-| B2 | Keep path + wait window, hotspot gate | Both outcomes for both items settle |
-| B3 | Dashboard + SSE | Live cards update during a hold |
-| B4 | Signed readings + receipt memo | Memo visible on Explorer (mainnet) |
-| B5 | Claude buyer run | Claude completes a rental unprompted |
-| B6 | Tunnel + mainnet run with cents | Two mainnet Explorer links |
-| B7 | OpenAPI + catalog PR draft | `pay catalog check` passes |
-| B8 | README, video, submit | Submitted by 15:40 |
+## 12. Benchmark: "a cheaper model with the desk beats the frontier model" (Nihar)
 
-Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00.
+Goal: a real, rerunnable result that shows we are technically better than a frontier model alone.
 
-Decision: keep `deposit-desk/` as the starting point. It was written after 11:00 kickoff, matches this
-plan, and already covers B1 and B3 plus most of B2 and B4: a sandbox refund (charger, device on AC) and
-a sandbox keep (hotspot, off venue network) both settled with real settlement signatures. Still to
-verify: the charger keep path by unplugging, the receipt memo, and the mainnet run.
+- **Scenarios:** about 50 personal-agent purchase situations generated by a script and committed to the
+  repo (`bench/scenarios.json`): phone may need a charger, laptop may need a hotspot, and so on. Each has
+  a hidden ground-truth device state (already handled or real need).
+- **Agent A (frontier alone):** Fable 5.1 (`claude-fable-5-1`) gets the user's request and context text and decides buy or skip.
+- **Agent B (ours):** Sonnet 5 (`claude-sonnet-5`) with the Deposit Desk hold: it holds, the desk checks the (simulated) device state, settles.
+- **Metrics:** dollars wasted on unneeded purchases, real needs missed, total spend, cost per decision (model tokens + fees), latency.
+- **Why we win:** no model can see whether a phone is plugged in; the frontier model guesses, the desk checks.
+- **Honesty:** the slide says scenarios are generated and device states are simulated in the benchmark.
+  Numbers are whatever the run produces; we report them as measured. Script and results live in `bench/`
+  and are served at `GET /v1/bench` for the dashboard.
+- Budget: about 75 minutes. If the frontier run is slow, run a 20-scenario subset and say so.
 
-## 13. Risks
+## 13. Pitch narrative: why the middleman matters (Nithin writes slides, Nihar checks facts)
+
+- Every market of strangers needed a trusted middleman who held the money:
+  PayPal became the trust layer for eBay (eBay bought it); Stripe sits between businesses and banks.
+- In AI: OpenRouter sits between apps and model providers and routes the traffic; Pay.sh itself is a
+  middleman between agents and paid APIs.
+- Agents are the next strangers spending money. Someone has to hold the deposit. That is us.
+- Solana link: a middleman charging 1 cent per check only works when a settlement costs a fraction of a
+  cent. On card rails the fee is larger than our whole margin.
+- Rule: any funding, revenue or usage number on a slide must be looked up and cited first.
+
+## 14. Honesty rules for the demo and slides
+
+- Live demo runs in the Pay.sh sandbox so nothing flakes, and we say so in one line: "Live demo is in
+  Pay.sh's sandbox for reliability; here is the same flow on Solana mainnet with real USDC." Show one
+  mainnet Explorer transaction.
+- No invented statistics. Every number is measured by us (benchmark, settlement time, fees, live
+  counters) or cited from a source.
+- Things too slow for stage are shown as a recorded run or a transaction link, labelled as such.
+
+## 15. Real product and expansion
+
+- It is a real API today: `/v1/terms`, x402 `upto` holds, OpenAPI with payment offers, listed in the
+  Pay.sh catalog (pay-skills PR).
+- Expansion = new checks as small plugins, the payment side never changes: power, network, then locker
+  open, package delivered, parking spot free, battery swap done.
+- Business: 1 cent per check plus a share of kept rentals; venues list their own checks.
+
+## 16. Build plan
+
+| Step | Owner | Output | Status |
+|---|---|---|---|
+| B1 | Nihar | Desk server with charger hold, sandbox | Done |
+| B2 | Nihar | Keep path, wait window, hotspot | Done (all three charger outcomes verified with a real unplug) |
+| B3 | Nithin | Dashboard stage-ready (section 10) | Basic version done, polish to do |
+| B4 | Nihar | Signed readings + receipt memo | Readings done; memo needs SOL in desk wallet |
+| B5 | Nihar | Claude buyer run (remote agent, pay tools only) | Done |
+| B6 | Nihar | Benchmark (section 12) + `/v1/bench` | To do |
+| B7 | Nihar | Tunnel + one mainnet run with cents | Needs $5 USDC + 0.02 SOL |
+| B8 | Nihar | OpenAPI + Pay.sh catalog PR | OpenAPI done, PR to do |
+| B9 | Nithin | Slides (middleman, benchmark, why Solana), sounds, demo script | To do |
+| B10 | Nithin | README polish, 2 min video, submission | To do, submit by 15:40 |
+
+Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full demo at least once before freeze.
+
+## 17. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -223,7 +311,7 @@ verify: the charger keep path by unplugging, the receipt memo, and the mainnet r
 | Pre-built code rules | Ask at kickoff; disclose anything written before 11:00 |
 | Keys leak | `.gitignore` covers `.env`, `keys/`, keypairs; secrets only in env |
 
-## 14. Open questions (ask Ludo / organizers)
+## 18. Open questions (ask Ludo / organizers)
 
 1. Judging criteria, how top 5 are picked, submission link and format.
 2. Is code written before 11:00 allowed? Team size?
@@ -233,7 +321,7 @@ verify: the charger keep path by unplugging, the receipt memo, and the mainnet r
 6. Can hackathon entries be fast-tracked into the Pay.sh catalog?
 7. Are MPP sessions / Payment Channels stable enough for a live demo?
 
-## 15. Mac setup checklist
+## 19. Mac setup checklist
 
 | Item | Status |
 |---|---|
@@ -246,5 +334,5 @@ verify: the charger keep path by unplugging, the receipt memo, and the mainnet r
 | Solana CLI | Not installed (Homebrew lock). Optional; wallets can be made with `pay account new` |
 | Desk wallet (operator + fee payer + receipt) | Created: `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair at `keys/desk.json` (gitignored, mode 600). TODO: send it ~0.02 SOL on mainnet for fees |
 | Venue gateway | Current reading `10.104.0.1`; confirm it is the venue wifi |
-| Git repo + remote | Initialized at this folder, remote `origin` = Sol-Hack, nothing committed or pushed |
+| Git repo + remote | Pushed to Sol-Hack `main`; follow section 0 for every change |
 | Vercel CLI | 59.11.2 (outdated; `npm i -g vercel@latest` if we deploy there) |
