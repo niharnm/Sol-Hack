@@ -156,6 +156,7 @@
     html { scroll-behavior: auto; }
   }
 </style>
+<link rel="stylesheet" href="/demo.css">
 </head>
 <body>
 <div class="page">
@@ -172,6 +173,18 @@
     </div>
   </header>
 
+  <section class="intro">
+    <div class="eyebrow">Pay.sh × Solana · Live sandbox</div>
+    <h2>A dollar authorized.<br><span>A promise verified.</span></h2>
+    <p>Your agent handles the payment. The desk checks the real world.</p>
+  </section>
+  <section class="flow" id="agent-flow" data-active="false" aria-label="Live agent workflow">
+    <div class="flow-node"><div class="flow-symbol"><svg viewBox="0 0 40 40"><rect x="7" y="10" width="26" height="23" rx="8"/><path d="M20 5v5M15 20v3m10-3v3m-11 5h12M3 19v8m34-8v8"/></svg></div><h3>Your agent</h3><p id="agent-step">Ready to authorize</p></div>
+    <div class="flow-wire" aria-hidden="true"></div>
+    <div class="flow-node"><div class="flow-symbol"><svg viewBox="0 0 40 40"><rect x="6" y="7" width="28" height="21" rx="3"/><path d="M3 33h34M22 11l-7 9h7l-3 5"/></svg></div><h3>The real world</h3><p id="device-step">Waiting for a hold</p></div>
+    <div class="flow-wire" aria-hidden="true"></div>
+    <div class="flow-node"><div class="flow-symbol"><svg viewBox="0 0 40 40"><path d="M20 4l13 5v11c0 8-13 16-13 16S7 28 7 20V9zM14 19l4 4 8-9"/></svg></div><h3>Settled fairly</h3><p id="settle-step">Only what is owed</p></div>
+  </section>
   <section class="stats" aria-label="Totals">
     <div class="stat"><b id="s-holds">0</b><span id="s-holds-label">holds</span></div>
     <div class="stat kept"><b id="s-kept">0</b><span>rentals kept</span></div>
@@ -197,10 +210,18 @@
     </article>
     <div class="empty" id="empty">
       <div class="empty-ring"></div>
-      <div class="empty-title">Waiting for an agent to rent something…</div>
-      <div class="empty-sub"><em>Hold</em> $1 USDC → <em>check</em> the device → <em>keep</em> if the need is real, <em>refund</em> $0.99 if it is already handled. Settled on Solana via Pay.sh x402 upto.</div>
+      <div class="empty-title">Ready when your agent is.</div>
+      <div class="empty-sub">Authorize a dollar. Verify delivery. Settle what’s owed.</div>
     </div>
   </section>
+
+  <div class="demo-actions">
+    <button class="btn primary" id="launch-demo">Run a sandbox hold ↗</button>
+    <button class="btn" id="show-proof">View API proof ↗</button>
+  </div>
+  <div class="demo-note">Test USDC · Real device readings · Live API events</div>
+  <dialog id="demo-dialog"><div class="dialog-top"><h2>Send your agent to the desk</h2><button class="btn" data-close>Close</button></div><p>Run this command in your terminal. Keep the charger connected for a refund. For delivery, unplug first and reconnect when the desk is waiting for power.</p><pre id="demo-command">npx --yes --package @solana/pay pay --sandbox curl -sS -X POST http://127.0.0.1:8787/v1/rent/charger</pre><button class="btn primary" id="copy-command">Copy command</button><p>This sends a real sandbox payment through Pay.sh. The terminal acts as the buyer; no model reasoning is simulated here.</p></dialog>
+  <dialog id="proof-dialog"><div class="dialog-top"><h2>The receipt, not just the animation</h2><button class="btn" data-close>Close</button></div><p id="proof-caption">No hold yet. Run a sandbox hold to see its API record.</p><pre id="proof-json">{}</pre><a class="btn" id="proof-api" href="/v1/holds" target="_blank" rel="noopener">Open raw API ↗</a><p>A signed reading proves its source and integrity. Sandbox signatures are not mainnet Explorer proof.</p></dialog>
 
   <section id="earlier" hidden>
     <h2 class="sec">Earlier holds</h2>
@@ -485,9 +506,30 @@
   }
 
   const MAX_HOLDS = 500; // same cap as the desk, so the page never keeps more than /v1/holds does
+  function renderFlow(h) {
+    const pending = h && isPending(h);
+    const done = h && (h.status === 'kept' || h.status === 'refunded');
+    $('agent-flow').dataset.active = String(Boolean(pending));
+    $('agent-flow').dataset.done = String(Boolean(done));
+    setText($('agent-step'), h ? '$1 authorized' : 'Ready to authorize');
+    setText($('device-step'), !h ? 'Waiting for a hold' : h.status === 'waiting_for_power' ? 'Plug in the charger…' : pending ? 'Reading the device…' : h.reading?.signature ? 'Reading signed' : 'Check finished');
+    setText($('settle-step'), !h ? 'Only what is owed' : pending ? 'Awaiting the check' : h.status === 'refunded' ? `${money(h.returned_usd)} returned` : h.status === 'kept' ? `${money(h.charged_usd)} settled` : 'Settlement unconfirmed');
+    setText($('proof-json'), h ? JSON.stringify(h, null, 2) : '{}');
+    setText($('proof-caption'), h ? `Hold ${h.id} · ${h.status} · ${network}. This record comes directly from the desk API.` : 'No hold yet. Run a sandbox hold to see its API record.');
+    $('proof-api').href = h ? '/v1/holds/' + encodeURIComponent(h.id) : '/v1/holds';
+  }
+  $('launch-demo').onclick = () => $('demo-dialog').showModal();
+  $('show-proof').onclick = () => $('proof-dialog').showModal();
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+  $('copy-command').onclick = async () => {
+    try { await navigator.clipboard.writeText($('demo-command').textContent); setText($('copy-command'), 'Copied'); }
+    catch { setText($('copy-command'), 'Select and copy the command above'); }
+  };
+
   function render(flash = null) {
     const list = [...holds.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
     for (const h of list.splice(MAX_HOLDS)) holds.delete(h.id);
+    renderFlow(list[0]);
     renderStats(list);
     renderHero(list[0], flash);
     renderList(list.slice(1), flash);
