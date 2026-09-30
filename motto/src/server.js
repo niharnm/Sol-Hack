@@ -6,12 +6,12 @@ import express from 'express';
 import { DEVNET_RPC, devnetSigner, assertDevnet } from './devnet.js';
 import { execFileSync } from 'node:child_process';
 import { consolePurchase, localConsole } from './console-purchase.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
 import { devicePublicKey } from './checks.js';
-import { ITEMS, publicTerms } from './items.js';
+import { ITEMS, MAX_HOLD_USD, publicTerms } from './items.js';
 import { postReceipt } from './receipt.js';
 import { settlementFor } from './settlement.js';
 
@@ -25,6 +25,11 @@ const DATA_DIR = process.env.DATA_DIR ?? (NETWORK === 'devnet' ? 'data/devnet' :
 const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 // Enough history for the dashboard counters without growing memory forever.
 const MAX_HOLDS = 500;
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const SETTLE_FAILED_REASON = 'Settlement was not confirmed: charge and return amounts are unknown until the transaction is inspected. A retry, even with the same Idempotency-Key, opens a fresh hold.';
+// Statuses a retried request may be answered from. A failed or interrupted settlement cannot be
+// retried on the same hold (pay-kit memoizes settle()), so those retries open a fresh one.
+const REPLAYABLE = new Set(['checking', 'waiting_for_power', 'waiting_for_delivery', 'judging', 'fetching', 'validating', 'settling', 'kept', 'refunded']);
 
 const operatorSigner = await Signer.env('OPERATOR_KEY') ?? (NETWORK === 'devnet' ? Signer.from(await devnetSigner('operator')) : undefined);
 const pay = await createPayKit({
@@ -132,9 +137,11 @@ app.get('/v1/terms', (req, res) => {
   res.json({
     service: 'Motto',
     console_purchase: localConsole(req, NETWORK, PORT),
-    summary: 'Refundable holds for agents renting real-world things. You only pay if the need is real.',
+    version: VERSION,
+    summary: 'Refundable holds for agents buying real-world things. The rental is charged only if the need is real; a check that finds it already handled costs the item\'s check fee.',
     why_hold:
-      'You are acting for a user on a device you cannot inspect. The desk runs the check on the device itself and returns a device-signed reading. Hold $1 when your user may need the item: if the need is already handled you get $0.99 back, if it is real the rental starts immediately.',
+      'You are acting for a user on a device you cannot inspect. The desk runs the check on the device itself and returns a reading signed by the desk key published here. Hold the item\'s price when your user may need it: if the need is already handled you pay only the check fee and the rest returns, if it is real the rental starts immediately. Send an Idempotency-Key header so a retry after a timeout answers the same hold instead of opening a second one.',
+    max_hold_usd: MAX_HOLD_USD,
     network: NETWORK,
     scheme: 'x402 upto: you authorize the hold, the desk settles only what is owed, the rest returns to you.',
     devicePublicKey,
@@ -157,7 +164,7 @@ function gitRevision() {
 app.post('/v1/console/purchase', consolePurchase({ network: NETWORK, port: PORT, rpcUrl: RPC_URL }));
 
 app.get('/healthz', (_req, res) => {
-  res.json({ ok: true, network: NETWORK, commit: gitRevision(), uptime_s: Math.round(process.uptime()), holds: holds.length });
+  res.json({ ok: true, version: VERSION, network: NETWORK, commit: gitRevision(), uptime_s: Math.round(process.uptime()), holds: holds.length });
 });
 
 app.get('/v1/holds', (_req, res) => res.json({ holds }));
@@ -185,6 +192,40 @@ app.get('/v1/events', (req, res) => {
   listeners.add(send);
   req.on('close', () => listeners.delete(send));
 });
+
+// The agent's Idempotency-Key, hashed so the hold log (public at /v1/holds) never shows it.
+function idempotencyKeyOf(req) {
+  const key = req.get('idempotency-key');
+  if (typeof key !== 'string' || !key.trim() || key.length > 256) return undefined;
+  return createHash('sha256').update(key).digest('hex').slice(0, 24);
+}
+
+// What the agent is told about a hold, built from the hold record so a first answer and an
+// idempotent replay say exactly the same thing.
+function responseFor(hold) {
+  const settled = ['kept', 'refunded', 'settle_failed'].includes(hold.status);
+  const reason =
+    hold.status === 'settle_failed' ? SETTLE_FAILED_REASON
+    : hold.status === 'interrupted' ? 'The desk restarted during the check: nothing was charged and settlement did not run.'
+    : settled ? ITEMS[hold.item].rules[hold.outcome] ?? hold.detail
+    : `The check is still running: poll GET /v1/holds/${hold.id}.`;
+  return {
+    hold_id: hold.id,
+    item: hold.item,
+    status: hold.status,
+    outcome: hold.outcome,
+    decision: settled ? hold.status : undefined,
+    hold_usd: hold.hold_usd,
+    check_fee_usd: hold.check_fee_usd,
+    charged_usd: hold.charged_usd ?? null,
+    returned_usd: hold.returned_usd ?? null,
+    settle_error: hold.settleError,
+    reason,
+    signed_reading: hold.reading,
+    settlement_tx: hold.settlementTx,
+    network: hold.network ?? NETWORK,
+  };
+}
 
 app.post('/v1/rent/:item', async (req, res, next) => {
   const item = req.params.item;
@@ -216,6 +257,20 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     return res.send(body);
   }
 
+  // A retry of the same request (same agent, same Idempotency-Key) after a timeout must not open
+  // a second rental. The new escrow is released untouched and the earlier hold is answered again.
+  const idempotencyKey = idempotencyKeyOf(req);
+  const prior = idempotencyKey && holds.find(h => h.idempotency_key === idempotencyKey && h.payer === result.payment.payer && h.item === item && REPLAYABLE.has(h.status));
+  if (prior) {
+    try {
+      await result.settle();
+    } catch (error) {
+      console.error(`hold ${prior.id}: releasing the replayed escrow failed:`, error?.message ?? error);
+    }
+    res.setHeader('idempotent-replayed', 'true');
+    return res.json(responseFor(prior));
+  }
+
   const hold = {
     id: randomUUID().slice(0, 8),
     item,
@@ -223,11 +278,14 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     ...(item === 'research' ? { query: req.body.query.trim(), provider: 'Crossref' } : {}),
     payer: result.payment.payer,
     hold_usd: ITEMS[item].hold_usd,
+    check_fee_usd: ITEMS[item].check_fee_usd,
+    covers: ITEMS[item].covers,
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     status: 'checking',
     startedAt: Date.now(),
   };
 
-  // From here the agent's $1.00 is escrowed. Whatever happens, settle() must run once so the
+  // From here the agent's hold is escrowed. Whatever happens, settle() must run once so the
   // escrow is released now rather than at the x402 timeout (pay-kit memoizes settle()).
   let settleStarted = false;
   try {
@@ -241,7 +299,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     }
 
     publish({ ...hold, status: 'settling', reading, outcome: reading.outcome });
-    const { keep, chargeBaseUnits } = settlementFor(reading.outcome);
+    const { keep, chargeBaseUnits } = settlementFor(ITEMS[item], reading.outcome);
     settleStarted = true;
     // Never setting the meter settles 0, so a desk-side check failure costs the agent nothing.
     if (chargeBaseUnits > 0n) result.charge.charge(chargeBaseUnits);
@@ -254,7 +312,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
       settleError = String(error?.message ?? error);
     }
     for (const [name, value] of Object.entries(settlementHeaders)) res.setHeader(name, value);
-    const { decision, charged_usd, returned_usd } = settlementFor(reading.outcome, settleError);
+    const { decision, charged_usd, returned_usd } = settlementFor(ITEMS[item], reading.outcome, settleError);
 
     const memo = `DESK ${keep ? 'KEEP' : 'REFUND'} hold:${hold.id} ${item} ${reading.detail} sig:${(reading.signature ?? '').slice(0, 8)}`;
     const settled = {
@@ -280,21 +338,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
         .catch(error => publish({ ...settled, receiptError: String(error?.message ?? error) }));
     }
 
-    res.json({
-      hold_id: hold.id,
-      item,
-      outcome: reading.outcome,
-      decision,
-      charged_usd,
-      returned_usd,
-      settle_error: settleError,
-      reason: settleError
-        ? 'Settlement was not confirmed. Charge and return amounts are unknown; inspect the transaction before retrying.'
-        : ITEMS[item].rules[reading.outcome] ?? reading.detail,
-      signed_reading: reading,
-      settlement_tx: settled.settlementTx,
-      network: NETWORK,
-    });
+    res.json(responseFor(settled));
   } catch (error) {
     // The desk itself failed after the hold opened. Settle now (the meter is still zero unless the
     // failure came from settle() itself) so the agent's escrow is released, then report the error.

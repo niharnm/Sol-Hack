@@ -4,7 +4,10 @@
 // it reads the device). Results go to bench/results.json.
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { publicTerms } from '../src/items.js';
 
+// Each scenario's item is priced from the desk's own table, so the prompt and the score never drift.
+const TERMS = publicTerms();
 const { scenarios } = JSON.parse(readFileSync(new URL('./scenarios.json', import.meta.url)));
 const LIMIT = Number(process.env.BENCH_LIMIT ?? scenarios.length);
 const CONCURRENCY = Number(process.env.BENCH_CONCURRENCY ?? 6);
@@ -17,15 +20,24 @@ const AGENTS = [
 
 const SYSTEM = 'You are a personal purchasing agent acting for a user. You cannot see or query the user\'s device. Reply with a single JSON object only.';
 
+// '3.00' minus '0.05' -> '2.95', done in USDC base units (6 decimals) so sub-cent fees stay exact.
+function usdMinus(a, b) {
+  const units = s => { const [i, f = ''] = String(s).split('.'); return BigInt(i) * 1_000_000n + BigInt(f.padEnd(6, '0')); };
+  const diff = units(a) - units(b);
+  const frac = (diff % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '').padEnd(2, '0');
+  return `${diff / 1_000_000n}.${frac}`;
+}
+
 function prompt(s, desk) {
-  const item = s.item === 'charger' ? 'a charger rental' : 'a hotspot rental';
+  const { hold_usd, check_fee_usd } = TERMS[s.item];
+  const item = `a ${s.item.replaceAll('_', ' ')} rental`;
   const options = desk
     ? `Options:
-- "buy": rent now for $1.00, charged in full.
-- "hold": put $1.00 on hold at Motto. The desk checks the device itself. If the need is already handled you get $0.99 back ($0.01 check fee). If the need is real the rental starts and $1.00 is charged.
+- "buy": rent now for $${hold_usd}, charged in full.
+- "hold": put $${hold_usd} on hold at Motto. The desk checks the device itself. If the need is already handled you get $${usdMinus(hold_usd, check_fee_usd)} back ($${check_fee_usd} check fee). If the need is real the rental starts and $${hold_usd} is charged.
 - "skip": do nothing.`
     : `Options:
-- "buy": rent now for $1.00, charged in full.
+- "buy": rent now for $${hold_usd}, charged in full.
 - "skip": do nothing.`;
   return `User request: "${s.request}"
 What you know (may be stale): ${s.context.map(c => `\n- ${c}`).join('')}
@@ -59,11 +71,17 @@ function callModel(model, text) {
   });
 }
 
-// Settlement rules, identical to the live desk.
-function score(decision, truth) {
+// Settlement rules, identical to the live desk, at the item's own prices: buy pays the hold outright;
+// a hold pays the hold when the need is real (the fee for a pure check) and only the check fee when
+// the need was already handled.
+function score(decision, truth, item) {
   const need = truth === 'real_need';
-  if (decision === 'buy') return { spend: 1, wasted: need ? 0 : 1, missed: false };
-  if (decision === 'hold') return { spend: need ? 1 : 0.01, wasted: need ? 0 : 0.01, missed: false };
+  const terms = TERMS[item];
+  const hold = Number(terms.hold_usd);
+  const fee = Number(terms.check_fee_usd);
+  const kept = terms.charge_on_delivered === 'fee' ? fee : hold;
+  if (decision === 'buy') return { spend: hold, wasted: need ? 0 : hold, missed: false };
+  if (decision === 'hold') return { spend: need ? kept : fee, wasted: need ? 0 : fee, missed: false };
   return { spend: 0, wasted: 0, missed: need }; // skip or error
 }
 
@@ -86,7 +104,7 @@ for (const agent of AGENTS) {
   console.log(`running ${agent.label} on ${subset.length} scenarios`);
   const results = await pool(subset.map(s => async () => {
     const r = await callModel(agent.model, prompt(s, agent.desk));
-    return { id: s.id, truth: s.truth, ...r, ...score(r.decision, s.truth) };
+    return { id: s.id, truth: s.truth, ...r, ...score(r.decision, s.truth, s.item) };
   }), CONCURRENCY);
   const sum = key => results.reduce((t, r) => t + (typeof r[key] === 'boolean' ? Number(r[key]) : r[key]), 0);
   const needs = results.filter(r => r.truth === 'real_need').length;
@@ -108,7 +126,7 @@ for (const agent of AGENTS) {
 
 const out = {
   ranAt: new Date().toISOString(),
-  note: 'Scenarios are generated (bench/generate.js, seeded). Device states are simulated from each scenario\'s hidden truth; in the live product the desk reads the real device.',
+  note: 'Scenarios are generated (bench/generate.js, seeded). Device states are simulated from each scenario\'s hidden truth; in the live product the desk reads the real device. Spend and waste are priced per item from the desk\'s own hold and check fee (src/items.js).',
   runs,
 };
 writeFileSync(new URL('./results.json', import.meta.url), JSON.stringify(out, null, 2));

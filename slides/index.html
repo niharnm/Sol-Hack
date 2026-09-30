@@ -128,16 +128,16 @@
   <section class="slide s1 on" id="s1" aria-label="Title" aria-hidden="false">
     <div class="rule"></div>
     <h1>Motto</h1>
-    <p class="tagline">An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.</p>
+    <p class="tagline">An agent authorizes the price. We verify delivery, settle what’s owed, and return the rest.</p>
     <p class="built">Built on <b>Pay.sh</b> and <b>Solana</b></p>
     <p class="live"><span class="k">Live</span><span>motto.tail039d5c.ts.net</span></p>
   </section>
 
   <section class="slide loop" id="s2" aria-label="The loop" aria-hidden="true">
-    <h2>Hold $1. Check the device. Keep it or send it back.</h2>
+    <h2>Hold the price. Check the device. Keep it or send it back.</h2>
     <svg viewBox="0 0 1680 430" role="img" aria-labelledby="loop-title loop-desc">
       <title id="loop-title">The Motto loop</title>
-      <desc id="loop-desc">The buyer agent holds one dollar. The desk checks the device. If the need is real the desk keeps one dollar. If the need is already handled it refunds ninety nine cents and keeps a one cent check fee.</desc>
+      <desc id="loop-desc">The buyer agent holds the item price, three dollars for a charger. The desk checks the device. If the need is real the desk keeps three dollars. If the need is already handled it refunds two dollars ninety five cents and keeps a five cent check fee.</desc>
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
         <marker id="ah-keep" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah keep" d="M0 0 L10 5 L0 10 z"/></marker>
@@ -150,7 +150,7 @@
       <text class="t-sub" x="140" y="273" text-anchor="middle">the device</text>
 
       <path class="ln" d="M286 215 L592 215" marker-end="url(#ah)"/>
-      <text class="t-step" x="439" y="176" text-anchor="middle"><tspan class="f-wait">1</tspan> Hold $1.00</text>
+      <text class="t-step" x="439" y="176" text-anchor="middle"><tspan class="f-wait">1</tspan> Hold $3.00</text>
       <text class="t-mono" x="439" y="264" text-anchor="middle">x402 upto</text>
       <text class="t-sub" x="439" y="306" text-anchor="middle">nothing paid yet</text>
 
@@ -165,18 +165,18 @@
 
       <text class="t-step" x="1250" y="36"><tspan class="f-wait">3</tspan> Settle</text>
       <rect class="node keep" x="1250" y="50" width="430" height="170" rx="28"/>
-      <text class="t-big f-keep" x="1282" y="126">Keep $1.00</text>
+      <text class="t-big f-keep" x="1282" y="126">Keep $3.00</text>
       <text class="t-sub" x="1282" y="180">the need is real</text>
       <rect class="node refund" x="1250" y="250" width="430" height="170" rx="28"/>
-      <text class="t-big f-refund" x="1282" y="316">Refund $0.99</text>
+      <text class="t-big f-refund" x="1282" y="316">Refund $2.95</text>
       <text class="t-sub" x="1282" y="362">need already handled,</text>
-      <text class="t-sub" x="1282" y="398">$0.01 check fee</text>
+      <text class="t-sub" x="1282" y="398">$0.05 check fee</text>
     </svg>
     <div class="checks">
       <div class="check"><span class="tag">Charger</span><span class="q">Is the device on AC power?</span></div>
       <div class="check"><span class="tag">Hotspot</span><span class="q">Is the device on the venue network?</span></div>
     </div>
-    <p class="moto">The check changes. <span>The money does not.</span></p>
+    <p class="moto">The price changes per item. <span>The rules do not.</span></p>
   </section>
 
   <section class="slide s3" id="s3" aria-label="Benchmark" aria-hidden="true">
@@ -189,18 +189,18 @@
         <div role="columnheader">Real needs met</div>
       </div>
       <div class="row" role="row">
-        <div class="who" role="cell"><b>Fable 5.1 alone</b><span>claude-fable-5-1, model cost $1.1504</span></div>
-        <div class="num bad" role="cell">$16.00</div>
-        <div class="num" role="cell">93.5%<small>missed 2 of 31</small></div>
+        <div class="who" role="cell"><b>Fable 5.1 alone</b><span>claude-fable-5-1, model cost $1.1983</span></div>
+        <div class="num bad" role="cell">$77.00</div>
+        <div class="num" role="cell">67.7%<small>missed 10 of 31</small></div>
       </div>
       <div class="row" role="row">
-        <div class="who" role="cell"><b>Sonnet 5 alone</b><span>claude-sonnet-5, model cost $0.1095</span></div>
-        <div class="num bad" role="cell">$7.00</div>
-        <div class="num" role="cell">48.4%<small>missed 16 of 31</small></div>
+        <div class="who" role="cell"><b>Sonnet 5 alone</b><span>claude-sonnet-5, model cost $0.1098</span></div>
+        <div class="num bad" role="cell">$46.00</div>
+        <div class="num" role="cell">41.9%<small>missed 18 of 31</small></div>
       </div>
       <div class="row win" role="row">
-        <div class="who" role="cell"><b>Sonnet 5 + Motto</b><span>claude-sonnet-5, model cost $0.1207</span></div>
-        <div class="num" role="cell">$0.19</div>
+        <div class="who" role="cell"><b>Sonnet 5 + Motto</b><span>claude-sonnet-5, model cost $0.1214</span></div>
+        <div class="num" role="cell">$1.40</div>
         <div class="num" role="cell">100%<small>missed 0 of 31</small></div>
       </div>
     </div>
@@ -219,7 +219,7 @@
     <div class="pair">
       <div class="card">
         <div class="lab">Why Solana</div>
-        <p>A 1 cent check only works when a settlement costs a fraction of a cent.</p>
+        <p>A few-cent check only works when a settlement costs a fraction of a cent.</p>
         <p class="small">On card rails the fee is larger than our whole margin.</p>
       </div>
       <div class="card">

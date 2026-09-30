@@ -1,12 +1,26 @@
 // A real Claude buyer with only Pay.sh tools; all payments use sandbox USDC.
+//   DESK_URL=http://127.0.0.1:8787 node demo/run-agent.mjs
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { tmpdir } from 'node:os';
-const terms=await fetch('http://127.0.0.1:8787/v1/terms').then(r=>r.json());
-if(terms.network!=='localnet')throw new Error('This legacy Claude runner uses sandbox tools. For the Devnet buyer run: cd motto && npm run buy:devnet -- \"research topic\"');
-const mission = `You are a research purchasing agent. Your user needs three DOI-backed sources about retrieval augmented generation for a technical research brief. Use only Pay.sh tools and only http://127.0.0.1:8787. Read GET /v1/terms, explain the research pack price and acceptance conditions briefly, then make exactly ONE paid POST /v1/rent/research with JSON body {"query":"retrieval augmented generation"}. Authorize no more than $1 test USDC. Do not retry a failed or timed-out paid request. Inspect the returned signed_reading.deliverable and checks. Report the actual titles and DOI links, checks passed or failed, hold ID, amount charged and amount returned. A structural citation check is not proof of relevance or paper quality. Do not claim to have read the papers, verified the signature yourself, or run a mainnet payment.`;
+const desk = (process.env.DESK_URL ?? 'http://127.0.0.1:8787').replace(/\/$/, '');
+const ITEM = 'research';
+
+// The mission's ceiling is the item's hold_usd from the desk's own terms, so the text never states a stale number.
+async function ceilingFor(item) {
+  const response = await fetch(`${desk}/v1/terms`);
+  if (!response.ok) throw new Error(`Could not read desk terms: HTTP ${response.status}`);
+  const terms = await response.json();
+  if (terms.network !== 'localnet') throw new Error('This Claude runner uses sandbox payments. For Devnet run: cd motto && npm run buy:devnet -- "research topic"');
+  const usd = terms.items?.[item]?.hold_usd;
+  if (!usd) throw new Error(`The desk does not publish a price for ${item}.`);
+  return `$${usd} test USDC`;
+}
+const ceiling = await ceilingFor(ITEM);
+
+const mission = `You are a research purchasing agent. Your user needs three DOI-backed sources about retrieval augmented generation for a technical research brief. Use only Pay.sh tools and only ${desk}. Read GET /v1/terms, explain the research pack price and acceptance conditions briefly, then make exactly ONE paid POST /v1/rent/${ITEM} with JSON body {"query":"retrieval augmented generation"}. Authorize no more than ${ceiling}. Do not retry a failed or timed-out paid request. Inspect the returned signed_reading.deliverable and checks. Report the actual titles and DOI links, checks passed or failed, hold ID, amount charged and amount returned. A structural citation check is not proof of relevance or paper quality. Do not claim to have read the papers, verified the signature yourself, or run a mainnet payment.`;
 const config = JSON.stringify({ mcpServers: { pay: { command: 'npx', args: ['--yes', '--package', '@solana/pay', 'pay', '--sandbox', 'mcp'] } } });
-console.log('\nDEMO MISSION: Buy three DOI-backed research sources. Authorize up to $1 test USDC.\nReal Claude buyer · Pay.sh sandbox tools only\n');
+console.log(`\nDEMO MISSION: Buy three DOI-backed research sources. Authorize up to ${ceiling}.\nReal Claude buyer · Pay.sh sandbox tools only · desk ${desk}\n`);
 const child = spawn('claude', ['-p', '--verbose', '--output-format', 'stream-json', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--allowedTools', 'mcp__pay__*', '--mcp-config', config], { cwd: tmpdir(), stdio: ['pipe', 'pipe', 'inherit'] });
 child.stdin.end(mission);
 const lines = createInterface({ input: child.stdout });

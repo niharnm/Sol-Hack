@@ -105,7 +105,9 @@ The check changes, the money does not. We show finished cases, not a catalog.
 Pay.sh x402 `upto` scheme, via `@solana/pay-kit` 0.12.0:
 
 1. Agent calls `POST /v1/rent/<item>` with no payment. Desk replies `402` with an x402 offer:
-   `scheme: upto`, `amount: 1000000` (USDC base units = $1.00), network Solana.
+   `scheme: upto`, `amount` set to the item's ceiling in USDC base units (6 decimals: research 1000000 = $1.00,
+   charger 3000000, hotspot 8000000, battery_pack 6000000, storage 2000000, display 10000000, verify 100000),
+   network Solana.
 2. Agent's `pay` client signs and retries. pay-kit verifies and escrows the ceiling onchain
    (the "hold").
 3. Desk runs the check and records usage with `pay.charge(req).charge(baseUnits)`.
@@ -113,21 +115,27 @@ Pay.sh x402 `upto` scheme, via `@solana/pay-kit` 0.12.0:
    agent. Settlement signature comes back in the response headers.
 
 SDK facts (read from pay-kit source):
-- Declare the gate with `usage(usd('1.00'))` in `createPayKit({ pricing })`. Usage gates are x402 only,
-  so `accept: ['x402']`.
+- Declare the gate per item with `usage(usd(item.hold_usd))` in `createPayKit({ pricing })`; the ceiling must be
+  identical on the 402 and the paid retry. Usage gates are x402 only, so `accept: ['x402']`.
 - `Charge.charge(n)` clamps to the ceiling; never setting it settles `0`.
 - If the handler throws, pay-kit still seals the channel and refunds.
 - Mainnet refuses the demo signer; needs `OPERATOR_KEY` and a real RPC.
 
-Settlement amounts:
+Settlement amounts (per item; the rule sentences are generated from these numbers in `src/items.js`):
 
-| Outcome | Charged | Returned |
-|---|---|---|
-| Already handled | $0.01 check fee | $0.99 |
-| Need is real and delivered | $1.00 | $0.00 |
-| Charger: power never arrived | $0.01 | $0.99 |
+| Item | Hold (ceiling) | Check fee | Covers | Already handled | Delivered or need is real | Never delivered (charger, display) or inconclusive (research, verify) | Check failed |
+|---|---|---|---|---|---|---|---|
+| research | $1.00 | none | three DOI-backed citation records with titles | n/a (a delivery, not a device check) | $1.00 charged | nothing charged, $1.00 returned | nothing charged, $1.00 returned |
+| charger | $3.00 | $0.05 | one charging session, up to 4 hours | $0.05 charged, $2.95 returned | $3.00 charged | $0.05 charged, $2.95 returned | nothing charged, $3.00 returned |
+| hotspot | $8.00 | $0.10 | a day pass, up to 24 hours | $0.10 charged, $7.90 returned | $8.00 charged | n/a | nothing charged, $8.00 returned |
+| battery_pack | $6.00 | $0.05 | one battery pack, up to 8 hours | $0.05 charged, $5.95 returned | $6.00 charged | n/a | nothing charged, $6.00 returned |
+| storage | $2.00 | $0.02 | up to 100 GB of storage for 24 hours | $0.02 charged, $1.98 returned | $2.00 charged | n/a | nothing charged, $2.00 returned |
+| display | $10.00 | $0.10 | one external monitor, up to 8 hours | $0.10 charged, $9.90 returned | $10.00 charged | $0.10 charged, $9.90 returned | nothing charged, $10.00 returned |
+| verify | $0.10 | $0.10 | one model-judged check of a stated condition | condition true: $0.10 charged, $0.00 returned | condition false: $0.10 charged, $0.00 returned | nothing charged, $0.10 returned | nothing charged, $0.10 returned |
 
-The 1 cent check fee is also the business model.
+`verify` is a pure check (`charge_on_delivered: 'fee'`); every other item is `'hold'`. `research` has no check fee and
+no already handled outcome. `/v1/terms` also reports `max_hold_usd: "10.00"` (the `pay-permissions.yml` cap) and
+`version`. The check fee (2 to 10 cents per device check) is also the business model.
 
 ## 5. Checks (the part that changes per item)
 
@@ -172,9 +180,11 @@ The desk runs on the demo laptop because the checks read that laptop. A public U
 
 | Method + path | Paid | Purpose |
 |---|---|---|
-| `GET /v1/terms` | free | Items, hold, fee, check question, refund rules, device public key |
-| `POST /v1/rent/charger` | up to $1 | Body `{ wait_seconds }`. Runs charger check, settles |
-| `POST /v1/rent/hotspot` | up to $1 | Runs network check, settles |
+| `GET /v1/terms` | free | Items with `hold_usd`, `check_fee_usd`, `covers`, `charge_on_delivered` (`hold` or `fee`), `check`, `params`, `rules`; `max_hold_usd`; `version`; network; desk signing key |
+| `POST /v1/rent/research` | up to $1.00 | Body `{ query }`. Fetches three DOI-backed citation records, validates, settles |
+| `POST /v1/rent/charger` | up to $3.00 | Body `{ wait_seconds }`. Runs charger check, settles |
+| `POST /v1/rent/hotspot` | up to $8.00 | Runs network check, settles |
+| `POST /v1/rent/battery_pack`, `storage`, `display`, `verify` | up to $6.00, $2.00, $10.00, $0.10 | Same shape, one check each (section 4 table) |
 | `GET /v1/holds` | free | Hold log |
 | `GET /v1/events` | free | Server-sent events for the dashboard |
 | `GET /openapi.json` | free | OpenAPI with `x-payment-info` offers, for the Pay.sh catalog |
@@ -182,8 +192,10 @@ The desk runs on the demo laptop because the checks read that laptop. A public U
 | `GET /v1/holds/:id` | free | One hold by id, JSON 404 if unknown |
 | `GET /healthz` | free | `ok`, `network`, `uptime_s`, `holds` |
 
-Response to the agent: `hold_id, item, outcome, decision (kept|refunded), charged_usd, returned_usd,
-reason (plain English rule), signed_reading, settlement_tx, network`.
+Response to the agent and hold record: `hold_id, item, hold_usd, check_fee_usd, covers, outcome,
+decision (kept|refunded|settle_failed), charged_usd, returned_usd, reason (plain English rule), signed_reading,
+settlement_tx, network`. A retried request with the same `Idempotency-Key` header and payer returns the existing
+hold instead of opening a second one.
 
 ## 8. Onchain extras
 
