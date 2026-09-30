@@ -1,205 +1,236 @@
-// Server smoke test: boots src/server.js on a free port with a throwaway data
-// dir and device key. The 402 offer needs the Pay.sh sandbox RPC, so this test
-// needs network access.
-import { after, before, test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { generateKeyPairSync, sign, verify, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { get } from 'node:http';
+import { createApp } from '../src/app.js';
+import { PurchaseStore } from '../src/store.js';
 
-const root = fileURLToPath(new URL('..', import.meta.url));
-const dir = mkdtempSync(join(tmpdir(), 'desk-server-'));
-const children = [];
-let desk;
+const pair = generateKeyPairSync('ed25519');
+const publicHex = pair.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex');
+const signReading = reading => ({ ...reading, signature: sign(null, Buffer.from(JSON.stringify(reading)), pair.privateKey).toString('hex'), devicePublicKey: publicHex });
+const tx = '3'.repeat(88);
+const requestBody = { service: 'research', input: { query: 'battery recycling', count: 3 }, max_spend_usd: '2.00' };
 
-// Real keys and mainnet settings from the caller's shell never reach the test servers.
-const env = { ...process.env };
-for (const name of ['NETWORK', 'RPC_URL', 'OPERATOR_KEY', 'RECIPIENT', 'RECEIPT_KEY', 'RECEIPT_RPC_URL', 'CHARGER_WAIT_MS']) delete env[name];
+async function workspace(t, options = {}) {
+  const store = new PurchaseStore(':memory:');
+  const calls = { payments: 0, executions: 0, settlements: 0, charges: [] };
+  let blockResolve;
+  const pay = { config: { operator: { recipient: '11111111111111111111111111111111' } },
+    async requirePayment(request, gate) {
+      calls.payments++;
+      calls.request = request;
+      calls.gate = gate;
+      if (options.paymentError) throw new Error('RPC failed at secret-internal-address');
+      if (!request.headers.has('payment-signature')) return { status: 402, response: Response.json({ amount: gate.amount.baseUnits().toString(), scheme: 'upto' }, { status: 402 }) };
+      return { status: 200, payment: { scheme: 'upto' }, charge: { charge: amount => calls.charges.push(amount) },
+        async settle() {
+          calls.settlements++;
+          if (options.settleError) throw new Error('RPC timeout');
+          if (options.noReceipt) return {};
+          return { 'payment-response': Buffer.from(JSON.stringify({ success: true, transaction: tx })).toString('base64') };
+        } };
+    } };
+  const execute = async (quote, { onUpdate }) => {
+    calls.executions++;
+    onUpdate({ status: 'validating' });
+    if (options.block) await new Promise(resolve => { blockResolve = resolve; });
+    if (options.deliveryError) throw new Error('provider timeout');
+    const passed = !options.incomplete;
+    return { outcome: passed ? 'delivered' : 'inconclusive', charge_usd: options.invalidCharge ? '4.00' : passed ? quote.ceiling_usd : '0.00',
+      units_delivered: passed ? quote.input.count : 0, checks: { passed },
+      deliverable: { type: 'citation_pack', query: quote.input.query, citations: passed ? [{ title: 'Battery recycling', doi: '10.1234/recycle' }] : [] } };
+  };
+  const app = createApp({ pay, store, signReading, signingPublicKey: publicHex, execute, ...options });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${server.address().port}`;
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); store.close(); });
+  const json = (path, body, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  const quote = async (body = requestBody, headers = {}) => { const response = await json('/v1/quotes', body, headers); assert.equal(response.status, 201); return response.json(); };
+  const purchase = (id, key = 'request-key-123', extra = {}) => json(`/v1/purchases/${id}`, {}, {
+    'Idempotency-Key': key, 'payment-signature': Buffer.from(JSON.stringify({ payload: { channelId: options.channel ?? randomUUID() } })).toString('base64'), ...extra });
+  return { base, store, calls, quote, purchase, json, unblock: () => blockResolve() };
+}
 
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const probe = createServer().listen(0, '127.0.0.1', () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
+test('catalog offers digital work and separate spending permission', async t => {
+  const w = await workspace(t);
+  const response = await fetch(w.base + '/v1/services');
+  const body = await response.json();
+  assert.deepEqual(Object.keys(body.services), ['research']);
+  assert.equal(body.signing_public_key, publicHex);
+  assert.equal(body.console.local_pay, false);
+  assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.equal((await fetch(w.base + '/v1/rent/charger', { method: 'POST' })).status, 410);
+});
+
+test('quotes are immutable task prices, not the user permission amount', async t => {
+  const w = await workspace(t);
+  const quote = await w.quote();
+  assert.equal(quote.ceiling_usd, '0.15');
+  assert.equal(quote.max_spend_usd, '2.00');
+  assert.match(quote.quote_hash, /^[a-f0-9]{64}$/);
+  assert.deepEqual(await fetch(w.base + '/v1/quotes/' + quote.id).then(r => r.json()), quote);
+  const changed = await w.json('/v1/purchases/' + quote.id, { count: 20 }, { 'Idempotency-Key': 'cannot-mutate' });
+  assert.equal(changed.status, 400);
+  assert.equal(w.calls.payments, 0);
+});
+
+test('scope above user permission is rejected before payment', async t => {
+  const w = await workspace(t);
+  const response = await w.json('/v1/quotes', { ...requestBody, max_spend_usd: '0.14' });
+  assert.equal(response.status, 422);
+  assert.equal(w.calls.payments, 0);
+  assert.deepEqual(w.store.purchases(), []);
+});
+
+test('unpaid purchase advertises exact quote ceiling', async t => {
+  const w = await workspace(t);
+  const quote = await w.quote();
+  const response = await w.json('/v1/purchases/' + quote.id, {}, { 'Idempotency-Key': 'unpaid-key-123' });
+  assert.equal(response.status, 402);
+  assert.deepEqual(await response.json(), { amount: '150000', scheme: 'upto' });
+  assert.equal(w.calls.executions, 0);
+  assert.equal(w.calls.gate.externalId, quote.id);
+});
+
+test('accepted work charges the quote and signs delivery bound to purchase', async t => {
+  const w = await workspace(t);
+  const quote = await w.quote();
+  const response = await w.purchase(quote.id);
+  assert.equal(response.status, 200);
+  const purchase = await response.json();
+  assert.equal(purchase.status, 'paid');
+  assert.deepEqual([purchase.charged_usd, purchase.returned_usd], ['0.15', '0.00']);
+  assert.deepEqual(w.calls.charges, [150000n]);
+  assert.equal(purchase.settlement_tx, tx);
+  const { signature, devicePublicKey, ...reading } = purchase.reading;
+  assert.equal(devicePublicKey, publicHex);
+  assert.equal(reading.quote_hash, quote.quote_hash);
+  assert.equal(reading.purchase_id, purchase.id);
+  assert.ok(verify(null, Buffer.from(JSON.stringify(reading)), pair.publicKey, Buffer.from(signature, 'hex')));
+  assert.equal(w.calls.settlements, 1);
+});
+
+for (const kind of ['incomplete', 'deliveryError']) {
+  test(`${kind} releases the full quoted hold without a service charge`, async t => {
+    const w = await workspace(t, { [kind]: true });
+    const purchase = await w.purchase((await w.quote()).id).then(r => r.json());
+    assert.equal(purchase.status, 'refunded');
+    assert.deepEqual([purchase.charged_usd, purchase.returned_usd], ['0.00', '0.15']);
+    assert.deepEqual(w.calls.charges, []);
+    assert.equal(w.calls.settlements, 1);
+  });
+}
+
+for (const kind of ['settleError', 'noReceipt']) {
+  test(`${kind} never reports payment or refund as confirmed`, async t => {
+    const w = await workspace(t, { [kind]: true });
+    const quote = await w.quote();
+    const purchase = await w.purchase(quote.id).then(r => r.json());
+    assert.equal(purchase.status, 'settle_failed');
+    assert.equal(purchase.charged_usd, null);
+    assert.equal(purchase.returned_usd, null);
+    const retry = await w.purchase(quote.id);
+    assert.equal(retry.headers.get('idempotent-replayed'), 'true');
+    assert.equal(w.calls.payments, 1);
+    assert.equal(w.calls.executions, 1);
+    assert.equal(w.calls.settlements, 1);
+  });
+}
+
+test('retry returns original record without authorizing another hold', async t => {
+  const w = await workspace(t);
+  const quote = await w.quote();
+  const first = await w.purchase(quote.id).then(r => r.json());
+  assert.deepEqual(await w.purchase(quote.id).then(r => r.json()), first);
+  assert.equal((await w.purchase(quote.id, 'another-request')).status, 409);
+  assert.equal(w.calls.payments, 1);
+  const secondQuote = await w.quote();
+  assert.equal((await w.purchase(secondQuote.id)).status, 409);
+  assert.equal(w.calls.payments, 1);
+});
+
+test('one payment channel cannot fund two different quotes', async t => {
+  const w = await workspace(t, { channel: 'same-channel-authorization' });
+  await w.purchase((await w.quote()).id);
+  assert.equal((await w.purchase((await w.quote()).id, 'different-key')).status, 409);
+  assert.equal(w.calls.executions, 1);
+});
+
+test('in-flight request replays existing progress without executing again', async t => {
+  const w = await workspace(t, { block: true });
+  const quote = await w.quote();
+  const pending = w.purchase(quote.id);
+  for (let attempt = 0; attempt < 50 && !w.calls.executions; attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(w.calls.executions, 1);
+  const response = await w.purchase(quote.id);
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).status, 'validating');
+  w.unblock();
+  assert.equal((await pending).status, 200);
+  assert.equal(w.calls.payments, 1);
+});
+
+test('expired quote cannot start payment but completed receipt remains accessible', async t => {
+  let now = Date.now();
+  const w = await workspace(t, { clock: () => now });
+  const quote = await w.quote();
+  now += 120001;
+  assert.equal((await w.purchase(quote.id)).status, 410);
+  assert.equal(w.calls.payments, 0);
+});
+
+test('invalid delivery charge releases the hold and records uncertainty', async t => {
+  const w = await workspace(t, { invalidCharge: true });
+  const quote = await w.quote();
+  assert.equal((await w.purchase(quote.id)).status, 500);
+  assert.equal(w.calls.settlements, 1);
+  assert.deepEqual(w.calls.charges, []);
+  assert.equal(w.store.purchaseForQuote(quote.id).charged_usd, null);
+});
+
+test('workspace API key protects quotes and history without leaking in errors', async t => {
+  const apiKey = 'private-test-key-that-is-long-enough';
+  const w = await workspace(t, { apiKey, consolePay: true });
+  assert.equal((await fetch(w.base + '/v1/services')).status, 200);
+  const denied = await fetch(w.base + '/v1/purchases');
+  assert.equal(denied.status, 401);
+  assert.ok(!(await denied.text()).includes(apiKey));
+  const quote = await w.quote(requestBody, { Authorization: 'Bearer ' + apiKey });
+  assert.equal((await w.purchase(quote.id, 'authorized-key', { Authorization: 'Bearer ' + apiKey })).status, 200);
+  assert.equal((await fetch(w.base + '/v1/purchases', { headers: { Authorization: 'Bearer ' + apiKey } })).status, 200);
+  assert.equal((await w.json('/v1/console/purchases', { quote_id: quote.id }, { Authorization: 'Bearer ' + apiKey })).status, 403);
+});
+
+test('loopback with a remote host, foreign origin, or proxy headers cannot access private records', async t => {
+  const w = await workspace(t);
+  for (const headers of [{ Host: 'attacker.example' }, { Origin: 'https://attacker.example' }, { 'X-Forwarded-For': '203.0.113.2' }, { 'X-Forwarded-Host': 'public.example' }]) {
+    const status = await new Promise((resolve, reject) => {
+      get(w.base + '/v1/purchases', { headers }, response => { response.resume(); resolve(response.statusCode); }).on('error', reject);
     });
-    probe.on('error', reject);
-  });
-}
-
-async function startDesk(extraEnv = {}) {
-  const port = await freePort();
-  const server = { base: `http://127.0.0.1:${port}`, log: '' };
-  server.child = spawn(process.execPath, ['src/server.js'], {
-    cwd: root,
-    env: { ...env, PORT: String(port), DATA_DIR: dir, DEVICE_KEY_PATH: join(dir, 'device.pem'), MOCK_POWER: 'ac', ...extraEnv },
-  });
-  children.push(server.child);
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`desk did not start:\n${server.log}`)), 15_000);
-    const collect = chunk => {
-      server.log += chunk;
-      if (server.log.includes('Motto on')) {
-        clearTimeout(timer);
-        resolve();
-      }
-    };
-    server.child.stdout.setEncoding('utf8').on('data', collect);
-    server.child.stderr.setEncoding('utf8').on('data', collect);
-    server.child.on('exit', code => {
-      clearTimeout(timer);
-      reject(new Error(`desk exited with ${code}:\n${server.log}`));
-    });
-  });
-  return server;
-}
-
-// The server writes its log lines just before it responds, so give the pipe a moment.
-async function assertLogged(server, pattern) {
-  for (let i = 0; i < 50 && !pattern.test(server.log); i++) await new Promise(r => setTimeout(r, 20));
-  assert.match(server.log, pattern);
-}
-
-before(async () => {
-  // Two holds (one with a checking line before its final line), a torn line and
-  // a blank line: the desk must come back with both holds in their final state.
-  const lines = [
-    { id: 'old00001', item: 'hotspot', status: 'checking', startedAt: 1000 },
-    { id: 'old00001', item: 'hotspot', status: 'kept', startedAt: 1000, charged_usd: '1.00' },
-    '{"id":"torn',
-    '',
-    { id: 'new00002', item: 'charger', status: 'refunded', startedAt: 2000, charged_usd: '0.01' },
-    { id: 'cut00003', item: 'charger', status: 'waiting_for_power', startedAt: 3000 },
-  ];
-  writeFileSync(join(dir, 'holds.jsonl'), lines.map(l => (typeof l === 'string' ? l : JSON.stringify(l))).join('\n') + '\n');
-  desk = await startDesk();
-});
-
-after(() => {
-  for (const child of children) child.kill();
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('GET /v1/terms lists the items', async () => {
-  const res = await fetch(`${desk.base}/v1/terms`);
-  assert.equal(res.status, 200);
-  const body = await res.json();
-  assert.deepEqual(Object.keys(body.items), ['research', 'charger', 'hotspot', 'battery_pack', 'storage', 'display', 'verify']);
-  for (const [name, item] of Object.entries(body.items)) {
-    assert.equal(body.endpoints[name], `POST /v1/rent/${name}`);
-    assert.match(item.hold_usd, /^\d+\.\d{2}$/, `${name} has a price`);
-    assert.match(item.check_fee_usd, /^\d+\.\d{2}$/, `${name} has a check fee`);
-    assert.ok(item.covers, `${name} says what the hold buys`);
-    assert.ok((name === 'research' ? item.rules.inconclusive : item.rules.already_handled) && item.rules.delivered && item.rules.check_failed, `${name} states its rules`);
-  }
-  assert.deepEqual([body.items.charger.hold_usd, body.items.charger.check_fee_usd, body.items.display.hold_usd, body.items.verify.charge_on_delivered], ['3.00', '0.05', '10.00', 'fee']);
-  assert.equal(body.max_hold_usd, '10.00');
-  assert.match(body.devicePublicKey, /^[0-9a-f]{64}$/);
-});
-
-test('POST /v1/rent/charger without payment returns the x402 upto offer', async () => {
-  const res = await fetch(`${desk.base}/v1/rent/charger`, { method: 'POST' });
-  assert.equal(res.status, 402);
-  assert.match(res.headers.get('content-type'), /application\/json/);
-  // The offer rides base64 JSON in the payment-required header and plain JSON in the body.
-  const header = JSON.parse(Buffer.from(res.headers.get('payment-required'), 'base64').toString('utf8'));
-  assert.equal(header.x402Version, 2);
-  assert.equal(header.resource.url, `${desk.base}/v1/rent/charger`);
-  assert.equal(header.accepts[0].scheme, 'upto');
-  // The charger's $3.00 ceiling in USDC base units.
-  assert.equal(header.accepts[0].amount, '3000000');
-  assert.equal(header.accepts[0].maxTimeoutSeconds, 300);
-  const body = await res.json();
-  assert.equal(body.accepts[0].scheme, 'upto');
-  assert.equal(body.accepts[0].protocol, 'x402');
-  assert.equal(body.accepts[0].amount, '3000000');
-  assert.equal(body.accepts[0].payTo, header.accepts[0].payTo);
-});
-
-test('POST /v1/rent/verify without a condition is a 400 before any hold', async () => {
-  const res = await fetch(`${desk.base}/v1/rent/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(res.status, 400);
-  assert.equal(res.headers.get('payment-required'), null);
-  assert.match((await res.json()).error, /condition is required/);
-  const ok = await fetch(`${desk.base}/v1/rent/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ condition: 'The laptop has 20 GB free' }) });
-  assert.equal(ok.status, 402);
-});
-
-test('GET /openapi.json advertises the payment offers', async () => {
-  const res = await fetch(`${desk.base}/openapi.json`);
-  assert.equal(res.status, 200);
-  const doc = await res.json();
-  const ceilings = { research: '1000000', charger: '3000000', hotspot: '8000000', battery_pack: '6000000', storage: '2000000', display: '10000000', verify: '100000' };
-  for (const [name, amount] of Object.entries(ceilings)) {
-    const [offer] = doc.paths[`/v1/rent/${name}`].post['x-payment-info'].offers;
-    assert.deepEqual([offer.method, offer.scheme, offer.amount, offer.currency], ['x402', 'upto', amount, 'USDC'], name);
+    assert.equal(status, 403, JSON.stringify(headers));
   }
 });
 
-test('GET /healthz reports network, commit, uptime and hold count', async () => {
-  const res = await fetch(`${desk.base}/healthz`);
-  assert.equal(res.status, 200);
-  const body = await res.json();
-  assert.equal(body.ok, true);
-  assert.equal(body.network, 'localnet');
-  assert.ok(Number.isInteger(body.uptime_s) && body.uptime_s >= 0);
-  assert.equal(body.holds, 3);
-  assert.ok(body.commit === null || /^[0-9a-f]{7,40}(-dirty)?$/.test(body.commit), `commit: ${body.commit}`);
+test('remote payment challenge uses configured origin rather than forwarded request headers', async t => {
+  const apiKey = 'another-workspace-secret-long-enough';
+  const w = await workspace(t, { apiKey, publicBaseUrl: 'https://motto.example' });
+  const auth = { Authorization: 'Bearer ' + apiKey };
+  const quote = await w.quote(requestBody, auth);
+  const response = await w.json('/v1/purchases/' + quote.id, {}, { ...auth, 'Idempotency-Key': 'canonical-origin', 'X-Forwarded-Host': 'evil.example' });
+  assert.equal(response.status, 402);
+  assert.equal(w.calls.request.url, `https://motto.example/v1/purchases/${quote.id}`);
 });
 
-test('GET /v1/holds reloads the log: last line per id, newest first, bad lines skipped', async () => {
-  const res = await fetch(`${desk.base}/v1/holds`);
-  assert.equal(res.status, 200);
-  const { holds } = await res.json();
-  assert.deepEqual(holds.map(h => [h.id, h.status]), [['cut00003', 'interrupted'], ['new00002', 'refunded'], ['old00001', 'kept']]);
-  await assertLogged(desk, /Skipped 1 malformed line/);
-});
-
-test('GET /v1/holds/:id returns one hold or a JSON 404', async () => {
-  const found = await fetch(`${desk.base}/v1/holds/old00001`);
-  assert.equal(found.status, 200);
-  assert.deepEqual(await found.json(), { id: 'old00001', item: 'hotspot', status: 'kept', startedAt: 1000, charged_usd: '1.00' });
-  const missing = await fetch(`${desk.base}/v1/holds/nope`);
-  assert.equal(missing.status, 404);
-  assert.match(missing.headers.get('content-type'), /application\/json/);
-  assert.equal(typeof (await missing.json()).error, 'string');
-});
-
-test('unknown items and unknown /v1 routes return JSON 404', async () => {
-  const item = await fetch(`${desk.base}/v1/rent/toString`, { method: 'POST' });
-  assert.equal(item.status, 404);
-  assert.deepEqual((await item.json()).items, ['research', 'charger', 'hotspot', 'battery_pack', 'storage', 'display', 'verify']);
-  const route = await fetch(`${desk.base}/v1/nope`);
-  assert.equal(route.status, 404);
-  assert.match(route.headers.get('content-type'), /application\/json/);
-  assert.equal(typeof (await route.json()).error, 'string');
-});
-
-test('a malformed JSON body gets a JSON 400, not an HTML page', async () => {
-  const res = await fetch(`${desk.base}/v1/rent/charger`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{bad' });
-  assert.equal(res.status, 400);
-  assert.match(res.headers.get('content-type'), /application\/json/);
-  assert.equal(typeof (await res.json()).error, 'string');
-  await assertLogged(desk, /POST \/v1\/rent\/charger -> 400/);
-});
-
-test('a pay-kit failure (RPC unreachable) gets a JSON 500 without the stack', async () => {
-  const broken = await startDesk({ RPC_URL: `http://127.0.0.1:${await freePort()}` });
-  const res = await fetch(`${broken.base}/v1/rent/charger`, { method: 'POST' });
-  assert.equal(res.status, 500);
-  assert.match(res.headers.get('content-type'), /application\/json/);
-  assert.deepEqual(await res.json(), { error: 'internal error' });
-  await assertLogged(broken, /POST \/v1\/rent\/charger -> 500/);
-});
-
-
-test('research rejects a missing topic before authorizing any payment', async () => {
-  const before = await fetch(`${desk.base}/v1/holds`).then(r => r.json());
-  const res = await fetch(`${desk.base}/v1/rent/research`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  assert.equal(res.status,400);
-  assert.match((await res.json()).error,/query/);
-  const after = await fetch(`${desk.base}/v1/holds`).then(r => r.json());
-  assert.equal(after.holds.length,before.holds.length);
+test('malformed JSON, missing idempotency, and internal payment errors are explicit', async t => {
+  const w = await workspace(t, { paymentError: true });
+  const malformed = await fetch(w.base + '/v1/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{bad' });
+  assert.equal(malformed.status, 400);
+  const quote = await w.quote();
+  assert.equal((await w.json('/v1/purchases/' + quote.id, {})).status, 400);
+  const failed = await w.purchase(quote.id);
+  assert.equal(failed.status, 500);
+  assert.deepEqual(await failed.json(), { error: 'The service could not complete this request.' });
+  assert.equal(w.calls.settlements, 0);
 });
