@@ -54,7 +54,7 @@ Pre-flight, with the laptop on AC power:
 
 ```bash
 curl -s http://127.0.0.1:8787/v1/terms | head -c 300
-pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger     # expect refunded, $0.99 back
+pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger     # expect refunded, $2.95 back
 pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot     # phone hotspot: expect kept. Venue wifi: expect refunded
 ```
 
@@ -98,7 +98,7 @@ tailscale funnel --bg 8787    # permanent: https://motto.tail039d5c.ts.net
 
 Screen: slide 1. Press right to slide 2 (the loop) for the last 5 seconds.
 
-Nithin: "An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest."
+Nithin: "An agent authorizes the price. We verify delivery, settle what’s owed, and return the rest."
 
 Nihar: nothing to run. Laptop on AC power, desk running.
 
@@ -115,7 +115,7 @@ Nihar runs the buyer command.
 Expect: the big word on the dashboard goes Checking, then Refunded (green), with the refund sound.
 Claude reports three short lines: what it paid, what came back, why.
 
-Nithin: "The desk checked the laptop. It is already on power. One cent for the check, $0.99 back.
+Nithin: "The desk checked the laptop. It is already on power. Five cents for the check, $2.95 back.
 Nobody clicked anything."
 
 If Claude has not placed the hold by about 0:35, Ctrl-C and run the direct charger command instead.
@@ -134,11 +134,11 @@ Expect: the big word says Checking and the line under it says "Device is on batt
 to arrive". The desk waits up to 30 seconds (`CHARGER_WAIT_MS`, default 30000). The volunteer plugs in,
 the next check reads AC power, and the word flips to Kept (amber), with the keep sound.
 
-Nithin: "Now the need is real. The laptop was on battery, power arrived, so the desk keeps the dollar."
+Nithin: "Now the need is real. The laptop was on battery, power arrived, so the desk keeps the $3.00."
 
 Edge cases:
-- Nobody plugs in within 30 seconds: the desk charges the $0.01 fee and returns $0.99, because power
-  never arrived. Narrate it as the third outcome: "If the power never comes, the agent pays one cent for
+- Nobody plugs in within 30 seconds: the desk charges the $0.05 fee and returns $2.95, because power
+  never arrived. Narrate it as the third outcome: "If the power never comes, the agent pays five cents for
   the check, nothing for the charger."
 - The volunteer plugs in too early, before the desk reads the battery: the desk sees AC power and
   refunds. Say "that is the first case again" and move on to beat 4.
@@ -149,12 +149,12 @@ Nihar runs the direct hotspot command.
 
 Setup: the laptop is on the phone hotspot (joined before the demo). The desk was started on the venue
 wifi with `VENUE_GATEWAY` set to that wifi's gateway, so the check now reads a different default
-gateway: device off the venue network, need is real, $1.00 kept. The word goes Kept (amber).
+gateway: device off the venue network, need is real, $8.00 kept. The word goes Kept (amber).
 
 Nithin: "Same desk, different check: is this laptop on the venue network? It is on my phone's hotspot,
-so the need is real and the dollar is kept. The check changes. The money does not."
+so the need is real and the $8.00 day pass is kept. The price changes per item. The rules do not."
 
-Variant: if the laptop is on the venue wifi, the same command is refunded ($0.01 fee, $0.99 back).
+Variant: if the laptop is on the venue wifi, the same command is refunded ($0.10 fee, $7.90 back).
 Narrate whichever happens.
 
 ### Beat 5. Benchmark (1:50 to 2:15)
@@ -162,9 +162,9 @@ Narrate whichever happens.
 Screen: slide 3, or click the Benchmark button in the dashboard header to jump to its benchmark
 chart. Every number comes from `motto/bench/results.json`.
 
-Nithin: "Fifty generated scenarios, the same for every run. Fable 5.1 alone wasted sixteen dollars.
-Sonnet 5 alone wasted seven and missed sixteen real needs. Sonnet 5 with the desk wasted nineteen
-cents and missed none. A cheaper model with Motto beat the frontier model on wasted spend.
+Nithin: "Fifty generated scenarios, the same for every run. Fable 5.1 alone wasted seventy-seven dollars.
+Sonnet 5 alone wasted forty-six and missed eighteen real needs. Sonnet 5 with the desk wasted a dollar
+forty and missed none. A cheaper model with Motto beat the frontier model on wasted spend.
 Scenarios are generated and device states are simulated; the live desk reads the real device."
 
 ### Beat 6. Why the middleman, why Solana (2:15 to 2:40)
@@ -176,7 +176,7 @@ Nithin, three lines:
    businesses and banks, OpenRouter between apps and model providers."
 2. "Pay.sh sits between agents and paid APIs, and agents are the next strangers spending money. Someone
    has to hold the deposit."
-3. "A one cent check only works when a settlement costs a fraction of a cent. That is why Solana."
+3. "A few-cent check only works when a settlement costs a fraction of a cent. That is why Solana."
 
 Do not quote funding, revenue or usage figures about any company. Any such number must be looked up and
 cited first (`PROJECT_PLAN.md` section 13).
@@ -187,15 +187,15 @@ Screen: dashboard, press `f` for fullscreen. End on the live counter.
 
 Nithin: "Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars
 of SOL for network fees. Every new check is a new line in the catalog: locker, parking, battery swap.
-The desk has settled [N] holds and returned [$X] to agents today. The check changes. The money does
-not."
+The desk has settled [N] holds and returned [$X] to agents today. The price changes per item. The
+rules do not."
 
 Read [N] and [$X] off the counters on screen. Do not say mainnet has been run: we stayed in the
 sandbox on purpose, and the mainnet path has never been exercised.
 
-TODO before demo: the plan says to close on "listed on Pay.sh". Say that only if the catalog PR is
-merged. If it is open say "submitted to the Pay.sh catalog". Otherwise say "ready for the Pay.sh
-catalog" (PR link: TODO before submit).
+The plan says to close on "listed on Pay.sh". Say that only if the catalog PR is merged. If it is
+open say "submitted to the Pay.sh catalog". Otherwise say "ready for the Pay.sh catalog"
+(PR: https://github.com/solana-foundation/pay-skills/pull/280).
 
 ## Backups
 
@@ -218,9 +218,9 @@ From `motto/bench/results.json` (50 scenarios, 31 real needs):
 
 | Run | Wasted | Missed needs | Needs met |
 |---|---|---|---|
-| Fable 5.1 alone | $16.00 | 2 | 93.5% |
-| Sonnet 5 alone | $7.00 | 16 | 48.4% |
-| Sonnet 5 + Motto | $0.19 | 0 | 100% |
+| Fable 5.1 alone | $77.00 | 10 | 67.7% |
+| Sonnet 5 alone | $46.00 | 18 | 41.9% |
+| Sonnet 5 + Motto | $1.40 | 0 | 100% |
 
 Plus the live counters on the dashboard. No other numbers unless they are on screen or in
 `PROJECT_PLAN.md`.
@@ -235,15 +235,16 @@ Plus the live counters on the dashboard. No other numbers unless they are on scr
 - **Why would an agent rent a charger?** A long-running Claude job on a laptop at low battery needs
   power to finish. A consumer's personal agent rents a charger, hotspot or locker for its user on the
   go. It cannot see the device, so it needs the desk to say whether the need is real.
-- **Why not Stripe?** A 1 cent check only works when a settlement costs a fraction of a cent. On card
+- **Why not Stripe?** A few-cent check only works when a settlement costs a fraction of a cent. On card
   rails the fee is larger than our whole margin. The agent also needs no account or API key: it pays
   per call in USDC.
 - **Why not just check first, then pay?** The agent cannot check, because it cannot see the device.
   The hold is the commitment: the money is escrowed, the desk checks, then settles only what is owed.
   Same pattern as a hotel card hold, with the reason attached. Nothing is paid to the desk until it
   settles.
-- **Can the desk overcharge?** No. The hold is a ceiling: the desk can settle at most the $1.00 the
-  agent authorized. The agent side cap is `pay-permissions.yml` (max $1.00 per payment).
+- **Can the desk overcharge?** No. The hold is a ceiling: the desk can settle at most the item's published
+  ceiling the agent authorized ($3.00 for the charger). The agent side cap is `pay-permissions.yml`
+  ($10.00 per payment cap, the highest ceiling).
 - **Is this mainnet or real money?** Live demo runs in Pay.sh's sandbox. Going live on mainnet is a
   config switch plus a few dollars of SOL for network fees. No. We stayed in the sandbox on purpose. For
   proof, run `node motto/proof/verify.mjs`: it checks the device signatures on three recorded holds.
@@ -252,14 +253,14 @@ Plus the live counters on the dashboard. No other numbers unless they are on scr
   hidden truth, and every run gets the same 50 scenarios. The no-desk runs see only text context, the
   way a cloud agent does, and the desk run can also hold. Rerun it with `npm run bench`.
 - **What if something breaks mid-hold?** If the check fails the desk reports `check_failed` and charges
-  nothing, never the $1.00. If the desk itself crashes after the hold opened, it settles the hold at
+  nothing, never the $3.00. If the desk itself crashes after the hold opened, it settles the hold at
   zero on the way out; if that settle fails too, the escrow returns to the agent when the x402 offer
   times out (300 seconds). If settlement fails the desk reports `settle_failed`, keeps the reading, and
   does not retry on its own.
 - **How does an agent find the desk?** It reads `GET /v1/terms`. `GET /openapi.json` carries the x402
   payment offers for the Pay.sh catalog, so agents can find it with `pay skills search` once the
-  listing is merged (PR link: TODO before submit).
-- **How does it make money?** 1 cent per check plus a share of kept rentals. Venues list their own
+  listing is merged (PR: https://github.com/solana-foundation/pay-skills/pull/280).
+- **How does it make money?** A few cents per check ($0.02 to $0.10 by item) plus a share of kept rentals. Venues list their own
   checks.
 - **What is next?** New checks as catalog lines (locker, parking, battery swap), hardware-signed
   readings, venue onboarding, Payment Channels for per minute metering.

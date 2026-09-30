@@ -89,9 +89,13 @@ test('GET /v1/terms lists the items', async () => {
   assert.deepEqual(Object.keys(body.items), ['research', 'charger', 'hotspot', 'battery_pack', 'storage', 'display', 'verify']);
   for (const [name, item] of Object.entries(body.items)) {
     assert.equal(body.endpoints[name], `POST /v1/rent/${name}`);
-    assert.equal(item.hold_usd, '1.00');
+    assert.match(item.hold_usd, /^\d+\.\d{2}$/, `${name} has a price`);
+    assert.match(item.check_fee_usd, /^\d+\.\d{2}$/, `${name} has a check fee`);
+    assert.ok(item.covers, `${name} says what the hold buys`);
     assert.ok((name === 'research' ? item.rules.inconclusive : item.rules.already_handled) && item.rules.delivered && item.rules.check_failed, `${name} states its rules`);
   }
+  assert.deepEqual([body.items.charger.hold_usd, body.items.charger.check_fee_usd, body.items.display.hold_usd, body.items.verify.charge_on_delivered], ['3.00', '0.05', '10.00', 'fee']);
+  assert.equal(body.max_hold_usd, '10.00');
   assert.match(body.devicePublicKey, /^[0-9a-f]{64}$/);
 });
 
@@ -104,12 +108,13 @@ test('POST /v1/rent/charger without payment returns the x402 upto offer', async 
   assert.equal(header.x402Version, 2);
   assert.equal(header.resource.url, `${desk.base}/v1/rent/charger`);
   assert.equal(header.accepts[0].scheme, 'upto');
-  assert.equal(header.accepts[0].amount, '1000000');
+  // The charger's $3.00 ceiling in USDC base units.
+  assert.equal(header.accepts[0].amount, '3000000');
   assert.equal(header.accepts[0].maxTimeoutSeconds, 300);
   const body = await res.json();
   assert.equal(body.accepts[0].scheme, 'upto');
   assert.equal(body.accepts[0].protocol, 'x402');
-  assert.equal(body.accepts[0].amount, '1000000');
+  assert.equal(body.accepts[0].amount, '3000000');
   assert.equal(body.accepts[0].payTo, header.accepts[0].payTo);
 });
 
@@ -126,9 +131,10 @@ test('GET /openapi.json advertises the payment offers', async () => {
   const res = await fetch(`${desk.base}/openapi.json`);
   assert.equal(res.status, 200);
   const doc = await res.json();
-  for (const path of ['/v1/rent/research', '/v1/rent/charger', '/v1/rent/hotspot', '/v1/rent/battery_pack', '/v1/rent/storage', '/v1/rent/display', '/v1/rent/verify']) {
-    const [offer] = doc.paths[path].post['x-payment-info'].offers;
-    assert.deepEqual([offer.method, offer.scheme, offer.amount, offer.currency], ['x402', 'upto', '1000000', 'USDC']);
+  const ceilings = { research: '1000000', charger: '3000000', hotspot: '8000000', battery_pack: '6000000', storage: '2000000', display: '10000000', verify: '100000' };
+  for (const [name, amount] of Object.entries(ceilings)) {
+    const [offer] = doc.paths[`/v1/rent/${name}`].post['x-payment-info'].offers;
+    assert.deepEqual([offer.method, offer.scheme, offer.amount, offer.currency], ['x402', 'upto', amount, 'USDC'], name);
   }
 });
 

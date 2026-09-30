@@ -1,6 +1,6 @@
 // Buyer agent: Claude acting for a user it cannot see, with pay tools only.
 // It reads the desk's terms, decides whether a hold makes sense, pays under a
-// $1.00 per-payment cap, and reports. Then this script checks the agent's report
+// per-payment cap equal to the desk's highest published hold, and reports. Then this script checks the agent's report
 // against the desk's own hold log, so the outcome does not rest on the model's word.
 //
 //   npm run buyer -- --scenario low-battery
@@ -29,12 +29,25 @@ export const SCENARIOS = {
 const TOOLS = ['mcp__pay__curl', 'mcp__pay__get_balance', 'mcp__pay__list_catalog', 'mcp__pay__search_catalog', 'mcp__pay__get_catalog_entry'];
 const BLOCKED = ['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Agent', 'NotebookEdit', 'mcp__pay__topup', 'mcp__pay__create_skill'];
 
-export function buyerPrompt(desk, situation) {
+// The buyer's per-payment cap, formatted like "$10.00": the desk's published max_hold_usd, or the highest
+// items[*].hold_usd when a desk does not publish it. Compared in USDC base units (6 decimals) so the
+// strings from /v1/terms are never rounded.
+export function highestCeiling(terms) {
+  const units = usd => { const [i, f = ''] = String(usd).split('.'); return BigInt(i) * 1_000_000n + BigInt(f.padEnd(6, '0')); };
+  const max = terms?.max_hold_usd
+    ? units(terms.max_hold_usd)
+    : Object.values(terms?.items ?? {}).filter(item => item?.hold_usd).reduce((m, { hold_usd }) => (units(hold_usd) > m ? units(hold_usd) : m), 0n);
+  if (max === 0n) throw new Error('the desk publishes neither max_hold_usd nor any hold_usd, so there is no ceiling to cap the buyer at');
+  const frac = (max % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '').padEnd(2, '0');
+  return `$${max / 1_000_000n}.${frac}`;
+}
+
+export function buyerPrompt(desk, situation, cap) {
   return `You are a personal agent running in the cloud for your user. You cannot inspect their devices yourself.
 
 Situation: ${situation}
 
-A deposit desk rents real-world items to agents with refundable USDC holds. Its terms are free at ${desk}/v1/terms. Use your pay curl tool to read them, decide which item (if any) fits the situation, and rent it only if it makes sense for your user. Rentals are POST ${desk}/v1/rent/<item> with an optional JSON body of the item's params. Rent at most one item, at most once. Never pay more than $1.00.
+A deposit desk rents real-world items to agents with refundable USDC holds. Its terms are free at ${desk}/v1/terms. Use your pay curl tool to read them, decide which item (if any) fits the situation, and rent it only if it makes sense for your user. Rentals are POST ${desk}/v1/rent/<item> with an optional JSON body of the item's params. Rent at most one item, at most once. Never pay more than ${cap}.
 
 When done, reply with 2 short lines for your user, then a last line that is only this JSON (decision is "held" whenever you opened a hold, whatever it settled to):
 {"decision":"held"|"skipped","item":<item or null>,"hold_id":<id or null>,"charged_usd":<string or null>,"returned_usd":<string or null>,"why":<one sentence>}`;
@@ -91,27 +104,30 @@ async function main() {
     throw new Error(`desk is on ${terms.network}, buyer is on ${network}. Pass --mainnet only for a mainnet desk.`);
   }
 
+  // The cap is the highest hold the desk publishes, read from its terms rather than typed here.
+  const cap = highestCeiling(terms);
+
   // On mainnet the cap is enforced by the pay MCP server, not by the prompt: this desk's origin
-  // only, $1.00 per payment. pay 0.29 rejects every permission rule in the sandbox ("invalid
-  // Solana network" for Surfpool's chain id), so the sandbox runs without the cap and says so.
+  // only, the desk's highest hold per payment. pay 0.29 rejects every permission rule in the sandbox
+  // ("invalid Solana network" for Surfpool's chain id), so the sandbox runs without the cap and says so.
   const dir = mkdtempSync(join(tmpdir(), 'motto-buyer-'));
   try {
     const payArgs = [values.mainnet ? '--mainnet' : '--sandbox', 'mcp'];
     if (values.mainnet) {
       const permissions = join(dir, 'permissions.yml');
-      writeFileSync(permissions, `origins: [${new URL(desk).origin}]\nnetworks: [mainnet]\nmax_payment: "$1.00"\nallow_any_asset: false\n`);
+      writeFileSync(permissions, `origins: [${new URL(desk).origin}]\nnetworks: [mainnet]\nmax_payment: "${cap}"\nallow_any_asset: false\n`);
       payArgs.push('--permissions', permissions);
     }
     const mcp = join(dir, 'mcp.json');
     writeFileSync(mcp, JSON.stringify({ mcpServers: { pay: { command: 'pay', args: payArgs } } }));
 
-    const cap = values.mainnet ? '$1.00 cap enforced by pay' : 'sandbox: no pay cap, test funds';
-    console.log(`Buyer (${values.model}, pay tools only, ${cap}) -> ${desk}`);
+    const capNote = values.mainnet ? `${cap} cap enforced by pay` : `sandbox: no pay cap, test funds, prompt cap ${cap}`;
+    console.log(`Buyer (${values.model}, pay tools only, ${capNote}) -> ${desk}`);
     console.log(`Situation: ${situation}\n`);
     const started = Date.now();
     const raw = await runClaude(
       ['-p', '--model', values.model, '--setting-sources', 'local', '--mcp-config', mcp, '--strict-mcp-config', '--allowedTools', TOOLS.join(','), '--disallowedTools', BLOCKED.join(','), '--output-format', 'json'],
-      buyerPrompt(desk, situation),
+      buyerPrompt(desk, situation, cap),
       dir,
     );
     const result = JSON.parse(raw);

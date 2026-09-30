@@ -16,38 +16,62 @@ access can run `node demo/run-agent.mjs` from the repository root. `npm run buye
 The console defaults to digital purchases; earlier device demos remain available through a checkbox.
 
 
-> An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
+> An agent authorizes a ceiling. We check whether the need is already handled, settle what’s owed, and return the rest.
 
-**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** https://github.com/solana-foundation/pay-skills/pull/280
+**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Pay.sh catalog PR:** https://github.com/solana-foundation/pay-skills/pull/280
 
-A deposit desk for agents buying things in the real world. The agent puts $1 USDC on hold, the desk
-checks whether the need is already handled, then keeps the money as the rental or sends it back.
+A deposit desk for agents buying things in the real world, and small digital deliveries handled the
+same way. The agent puts the item's ceiling on hold ($0.10 to $10.00 USDC, priced per item), the desk
+checks whether the need is already handled or delivers the item, then keeps the hold as the rental or
+keeps only a small check fee and sends the rest back.
 Built on Pay.sh and settled on Solana with the x402 `upto` scheme: the agent authorizes a ceiling,
 the desk settles only what is owed, and the rest returns to the agent automatically.
 
-The charger is the first check on the desk. The hotspot is the second. The check changes. The money
-does not.
+The charger is the first check on the desk. The hotspot is the second. The check and the price change
+per item. The rules do not.
 
-| Item | Check | Already handled | Need is real |
-|---|---|---|---|
-| Charger | Is the device drawing AC power? | $0.01 check fee, $0.99 back | Power delivered within 30s: $1.00 kept. Never delivered: $0.99 back |
-| Hotspot | Is the device on the venue network? | $0.01 check fee, $0.99 back | $1.00 kept |
+## Prices and what each outcome settles to
 
-Every reading is signed by a device ed25519 key and returned to the agent (a reading from a check that itself failed is returned unsigned and costs nothing). Optional receipt memos put
-the reason onchain (`DESK REFUND hold:ab12 charger device_on_AC sig:1f2e3d4c`).
+| Item | Hold (ceiling) | Check fee | Covers | Already handled | Delivered or need is real | Never delivered or inconclusive | Check failed |
+|---|---|---|---|---|---|---|---|
+| `research` | $1.00 | none | three DOI-backed citation records with titles | no such outcome (a delivery, not a device check) | $1.00 charged | inconclusive (incomplete records): nothing charged, $1.00 returned | nothing charged, $1.00 returned |
+| `charger` | $3.00 | $0.05 | one charging session, up to 4 hours | $0.05 charged, $2.95 returned | $3.00 charged | never delivered: $0.05 charged, $2.95 returned | nothing charged, $3.00 returned |
+| `hotspot` | $8.00 | $0.10 | a day pass, up to 24 hours | $0.10 charged, $7.90 returned | $8.00 charged | settles the moment the need is real | nothing charged, $8.00 returned |
+| `battery_pack` | $6.00 | $0.05 | one battery pack, up to 8 hours | $0.05 charged, $5.95 returned | $6.00 charged | settles the moment the need is real | nothing charged, $6.00 returned |
+| `storage` | $2.00 | $0.02 | up to 100 GB of storage for 24 hours | $0.02 charged, $1.98 returned | $2.00 charged | settles the moment the need is real | nothing charged, $2.00 returned |
+| `display` | $10.00 | $0.10 | one external monitor, up to 8 hours | $0.10 charged, $9.90 returned | $10.00 charged | never delivered: $0.10 charged, $9.90 returned | nothing charged, $10.00 returned |
+| `verify` | $0.10 | $0.10 | one model-judged check of a stated condition | condition true: $0.10 charged, $0.00 returned | condition false: $0.10 charged, $0.00 returned | inconclusive: nothing charged, $0.10 returned | nothing charged, $0.10 returned |
+
+The rules are the same for every item and are generated from these numbers, so `GET /v1/terms` serves
+the exact sentence that applies, for example "Already handled: the $0.05 check fee is charged, $2.95
+returned." Three items wait for a delivery: `research` (the records are fetched and validated),
+`charger` (power arriving) and `display` (a monitor being connected); the other four settle the moment
+the check says whether the need is real. `verify` is a pure check: a definitive verdict either way
+costs the $0.10 fee, an inconclusive one costs nothing. `research` has no check fee: three valid records
+cost $1.00, anything less costs nothing.
+
+Every reading is signed by the desk's ed25519 key published at `/v1/terms` and returned to the agent
+(a reading from a check that itself failed is returned unsigned and costs nothing); hardware
+attestation is next. Optional receipt memos put the reason onchain
+(`DESK REFUND hold:ab12 charger device_on_AC sig:1f2e3d4c`).
 
 ## How it works
 
-1. The agent reads `GET /v1/terms` (free): the items, the $1.00 hold, the $0.01 check fee, the check
-   question, the refund rules and the desk's device public key.
-2. It calls `POST /v1/rent/<item>`. The desk answers `402` with an x402 `upto` offer for $1.00 USDC.
-   The agent's `pay` client signs and retries, and `@solana/pay-kit` escrows the $1.00 ceiling. That
-   is the hold: nothing has been paid to the desk yet.
-3. The desk runs the check on the device (power, network, battery, disk, displays, or a model judging a stated condition) and signs the reading with its ed25519
-   device key.
-4. The desk settles what is owed: $0.01 if the need was already handled (or the charger never
-   delivered power), $1.00 if the need was real and delivered. The rest of the hold returns to the
-   agent.
+1. The agent reads `GET /v1/terms` (free): the items, each item's hold ceiling and check fee, what
+   the hold covers, the check question, the settlement rules, `max_hold_usd` (`"10.00"`, the highest
+   ceiling), the desk `version` and its signing key (`devicePublicKey`).
+2. It calls `POST /v1/rent/<item>`. The desk answers `402` with an x402 `upto` offer for that item's
+   ceiling in USDC ($3.00 for the charger, sent as 3000000 base units). The agent's `pay` client
+   signs and retries, and `@solana/pay-kit` escrows the ceiling. That is the hold: nothing has been
+   paid to the desk yet. A retried request with the same `Idempotency-Key` header and payer returns
+   the existing hold instead of opening a second one.
+3. The desk runs the check on the device (power, network, battery, disk, displays, or a model judging
+   a stated condition) or fetches the deliverable (`research`: Crossref records, validated), and signs
+   the reading with its ed25519 key, the one `/v1/terms` publishes.
+4. The desk settles what is owed: the check fee if the need was already handled (or, for the charger
+   and the display, if the rental never delivered), the full hold if the need was real or the item was
+   delivered. `verify` charges only its $0.10 fee on a definitive verdict either way. A failed or
+   inconclusive check charges nothing. The rest of the hold returns to the agent.
 5. The agent gets the outcome, the plain English rule, the signed reading and the settlement
    signature. The dashboard shows it live, and an optional receipt memo writes the reason onchain.
 
@@ -80,12 +104,12 @@ checks its report against the desk's own hold log:
 
 ```bash
 npm run buyer -- --list                       # situations: low-battery, plugged-in, battery-pack, big-download, no-wifi, two-screens, second-screen
-npm run buyer -- --scenario big-download      # verified run: picked storage, held $1, 450.8 GB free, $0.99 back
+npm run buyer -- --scenario big-download      # verified run (recorded under the earlier flat $1 pricing): picked storage, 450.8 GB free, refunded minus the check fee
 npm run buyer -- "My laptop is at 12% and has a 3 hour render left"
 npm run buyer -- --desk https://motto.tail039d5c.ts.net --mainnet --scenario no-wifi
 ```
 
-On mainnet the buyer's pay MCP server enforces a $1.00 per payment cap for the desk's origin only. pay 0.29 rejects
+On mainnet the buyer's pay MCP server enforces a $10.00 per payment cap (the highest ceiling) for the desk's origin only. pay 0.29 rejects
 every permission rule in the sandbox ("invalid Solana network"), so sandbox runs have no pay-side cap and say so.
 
 The same thing by hand:
@@ -118,44 +142,68 @@ for fullscreen. Sound is off until you click the Sound button.
 
 | Method and path | Paid | Purpose |
 |---|---|---|
-| `GET /v1/terms` | free | Items, hold, fee, check question, refund rules, device public key |
-| `POST /v1/rent/charger` | up to $1 | Body `{ "wait_seconds": 30 }` (clamped to 0 to 240). Runs the charger check, settles |
-| `POST /v1/rent/hotspot` | up to $1 | Runs the network check, settles |
-| `POST /v1/rent/battery_pack` | up to $1 | Body `{ "min_percent": 50 }`. On AC or at least that charge: refunded; below it: pack rental kept |
-| `POST /v1/rent/storage` | up to $1 | Body `{ "needed_gb": 10 }`. Enough free disk: refunded; not enough: storage rental kept |
-| `POST /v1/rent/display` | up to $1 | Body `{ "wait_seconds": 30 }`. External display already connected: refunded; one connected within the wait: kept; never: refunded |
-| `POST /v1/rent/verify` | up to $1 | Body `{ "condition": "...", "evidence_urls": [...] }`. A model judges the condition on device evidence and up to 3 URLs: true refunded, false kept, unknown $0 |
+| `GET /v1/terms` | free | Items with `hold_usd`, `check_fee_usd`, `covers`, `charge_on_delivered` (`hold` or `fee`), the check question, params and settlement rules, plus `max_hold_usd`, `version`, `network` and the desk's signing key |
+| `POST /v1/rent/research` | up to $1.00 | Body `{ "query": "..." }`. Fetches three distinct DOI-backed citation records from Crossref public metadata and validates count, titles and unique DOIs: delivered $1.00 charged; incomplete or provider failure: nothing charged |
+| `POST /v1/rent/charger` | up to $3.00 | Is the device already drawing AC power? Body `{ "wait_seconds": 30 }` (clamped to 0 to 240) sets how long to wait for power on battery. Settles |
+| `POST /v1/rent/hotspot` | up to $8.00 | Is the device already on the venue network? Settles |
+| `POST /v1/rent/battery_pack` | up to $6.00 | Body `{ "min_percent": 50 }`. On AC or at least that charge: fee only, rest returned; below it: pack rental kept |
+| `POST /v1/rent/storage` | up to $2.00 | Body `{ "needed_gb": 10 }`. Enough free disk: fee only, rest returned; not enough: storage rental kept |
+| `POST /v1/rent/display` | up to $10.00 | Body `{ "wait_seconds": 30 }`. External display already connected: fee only, rest returned; one connected within the wait: kept; never: fee only, rest returned |
+| `POST /v1/rent/verify` | up to $0.10 | Body `{ "condition": "...", "evidence_urls": [...] }`. A model judges the condition on device evidence and up to 3 URLs: true or false costs the $0.10 fee, unknown costs nothing |
 | `GET /v1/holds` | free | Hold log |
 | `GET /v1/holds/:id` | free | One hold by id, JSON 404 if unknown |
 | `GET /v1/events` | free | Server-sent events for the dashboard |
 | `GET /v1/bench` | free | Benchmark summary for the dashboard chart (per scenario data stays in `bench/results.json`) |
 | `GET /openapi.json` | free | OpenAPI with `x-payment-info` offers, for the Pay.sh catalog (listing prepared in `CATALOG.md`) |
-| `GET /healthz` | free | Health check: `ok`, `network`, `uptime_s`, `holds` |
+| `GET /healthz` | free | Health check: `ok`, `network`, `uptime_s`, `holds`, `version` |
 
-A paid call returns `hold_id`, `item`, `outcome`, `decision` (`kept`, `refunded`, or `settle_failed`),
-`charged_usd`, `returned_usd`, `reason` (the plain English rule), `signed_reading`, `settlement_tx` and
-`network`. On `settle_failed` the money fields are null, `settle_error` says why, and the $1.00 ceiling
-stays held until the x402 timeout releases it; the desk does not retry on its own.
-An unpaid call to `/v1/rent/*` gets the `402` with the x402 `upto` offer.
+A paid call returns `hold_id`, `item`, `hold_usd`, `check_fee_usd`, `outcome`, `decision` (`kept`,
+`refunded`, or `settle_failed`), `charged_usd`, `returned_usd`, `reason` (the plain English rule),
+`signed_reading`, `settlement_tx` and `network`. On `settle_failed` the money fields are null,
+`settle_error` says why, and the item's ceiling stays held until the x402 timeout releases it; the
+desk does not retry on its own. An unpaid call to `/v1/rent/*` gets the `402` with the x402 `upto`
+offer for the item's ceiling in USDC base units (6 decimals: $3.00 = 3000000, $1.00 = 1000000).
+
+## Verify a reading yourself
+
+Every hold's `reading` carries a hex ed25519 `signature` and the `devicePublicKey` that `GET /v1/terms`
+publishes. Ten lines of Node check it offline:
+
+```js
+import { createPublicKey, verify } from 'node:crypto';
+
+const desk = 'http://127.0.0.1:8787';
+const terms = await (await fetch(`${desk}/v1/terms`)).json();
+const hold = await (await fetch(`${desk}/v1/holds/<hold_id>`)).json();
+const { signature, devicePublicKey, ...payload } = hold.reading;
+const key = createPublicKey({
+  key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(devicePublicKey, 'hex')]),
+  format: 'der', type: 'spki',
+});
+console.log(devicePublicKey === terms.devicePublicKey && verify(null, Buffer.from(JSON.stringify(payload)), key, Buffer.from(signature, 'hex')));
+```
+
+`node proof/verify.mjs` runs the same check over the recorded sandbox holds.
 
 ## Benchmark
 
 A cheaper model with the desk beat the frontier model on wasted spend: Sonnet 5 with Motto
-wasted $0.19 and missed no real need, Fable 5.1 alone wasted $16.00. Three runs on the same 50 generated
+wasted $1.40 and missed no real need, Fable 5.1 alone wasted $77.00. Three runs on the same 50 generated
 purchase scenarios (31 of them are real needs). The two runs without the desk choose between buy and
-skip from text context. The third can also put a hold on the desk; it held in all 50 scenarios.
+skip from text context. The third can also put a hold on the desk; it held in 49 scenarios and skipped 1.
 Served at `GET /v1/bench`, rerun with `npm run bench`. Run time from `results.json`: `ranAt`
-2026-09-30T18:45:33.372Z.
+2026-09-30T21:37:51.489Z.
 
 | Run | Model | Scenarios | Wasted (USD) | Missed needs | Real needs | Needs met | Total spend (USD) | Model cost (USD) | Avg latency (ms) |
 |---|---|---|---|---|---|---|---|---|---|
-| Fable 5.1 alone | `claude-fable-5-1` | 50 | 16.00 | 2 | 31 | 93.5% | 45.00 | 1.1504 | 5828 |
-| Sonnet 5 alone | `claude-sonnet-5` | 50 | 7.00 | 16 | 31 | 48.4% | 22.00 | 0.1095 | 3717 |
-| Sonnet 5 + Motto | `claude-sonnet-5` | 50 | 0.19 | 0 | 31 | 100% | 31.19 | 0.1207 | 3770 |
+| Fable 5.1 alone | `claude-fable-5-1` | 50 | 77.00 | 10 | 31 | 67.7% | 195.00 | 1.1983 | 5731 |
+| Sonnet 5 alone | `claude-sonnet-5` | 50 | 46.00 | 18 | 31 | 41.9% | 115.00 | 0.1098 | 3620 |
+| Sonnet 5 + Motto | `claude-sonnet-5` | 50 | 1.40 | 0 | 31 | 100% | 169.40 | 0.1214 | 3745 |
 
 Wasted is money spent on needs that were already handled. A missed need is a real need the agent
-skipped. With the desk, an already handled need costs only the $0.01 check fee, which is all of the
-$0.19 in that row.
+skipped. With the desk, an already handled need costs only the check fee: the $1.40 in that row is the
+check fees on the 18 already-handled scenarios it held (charger $0.05, hotspot $0.10); it skipped one
+handled scenario. Benchmark recorded under the per-item pricing at 14:37 PDT on 2026-09-30.
 
 > Scenarios are generated (bench/generate.js, seeded). Device states are simulated from each scenario's hidden truth; in the live product the desk reads the real device.
 
@@ -163,9 +211,13 @@ $0.19 in that row.
 
 Everything runs in Pay.sh's sandbox. We chose not to run on mainnet for the hackathon: the mainnet path is configured (`NETWORK`, `RPC_URL`, `OPERATOR_KEY`, plus a few dollars of SOL for network fees) but has never been exercised.
 
-The desk runs on the demo laptop because the checks read that laptop. In production the check runs on
-the rented hardware, and the charger or venue hardware signs the reading instead of the desk's device
-key.
+The Pay.sh sandbox drops roughly one payment in five with a transient facilitator error. The desk
+reports `settle_failed` and charges nothing, and the agent should retry once.
+
+The desk runs on the demo laptop because the device checks read that laptop. In production the check
+runs on the rented hardware, and the charger or venue hardware signs the reading instead of the desk's
+key. The research pack packages public Crossref metadata; its checks validate structure (count, titles,
+unique DOIs), not relevance, quality, DOI resolution or full-text access.
 
 ## Config
 
@@ -177,29 +229,47 @@ never in the repo.
   counters survive a restart.
 - `VENUE_GATEWAY`: default gateway IP of the venue network. If it is unset, every device counts as
   off the venue network and a hotspot hold is kept.
-- `pay-permissions.yml`: spending cap for the buyer agent with `pay mcp --permissions` (max $1.00 per
-  payment).
+- `pay-permissions.yml`: spending cap for the buyer agent with `pay mcp --permissions` ($10.00 per
+  payment, the highest ceiling, the same number `/v1/terms` reports as `max_hold_usd`).
 
 ## Proof (sandbox)
 
-Everything runs in the Pay.sh sandbox (test USDC on localnet), so there are no Explorer links. These
-three holds were recorded on the demo laptop on 2026-09-30 and are exported with their device-signed
-readings in `motto/proof/sandbox-holds.json`. `node motto/proof/verify.mjs` checks each signature
-against the desk's device key and that charged plus returned equals the $1.00 hold. It does not
-confirm the sandbox transactions themselves.
+Everything runs in the Pay.sh sandbox (test USDC on localnet), so there are no Explorer links. Eight
+holds recorded on the demo laptop on 2026-09-30 are exported with their readings, signed by the desk's
+key, in `motto/proof/sandbox-holds.json`: three under the earlier flat $1 pricing and five under the
+per-item prices. `node motto/proof/verify.mjs` checks each signature against the desk's key, that
+charged plus returned adds up to that hold's own ceiling, and that the charge matches the outcome.
+It does not confirm the sandbox transactions themselves.
 
-- Refund (device already on AC): hold `ac7fee75`, $0.01 charged, $0.99 returned. Sandbox tx
+Per-item prices:
+
+- Refund (storage, enough free disk already): hold `0992a6d3`, $2.00 ceiling, $0.02 charged, $1.98 returned. Sandbox tx
+  `3pnKJk3RtYuWK49SsvNcbCHLCe2FG4LJ5r4kPFqcfpHBgo1WNSsDyCsFUcLQogpR3wAcfuXb6b4MUBrvT8YhBK2`
+- Refund (charger, on battery and power never arrived): hold `8b2c5933`, $3.00 ceiling, $0.05 charged, $2.95 returned. Sandbox tx
+  `4uHR631xsCQnUgPpdUzCpLVf5FHD672MESvUwyBmLner6oiQzb6PeeLoCKdKJUwNNs8X7LDCSv4qbRZr6Fdmop9p`
+- Refund (monitor, none connected before the timeout): hold `6db3b890`, $10.00 ceiling, $0.10 charged, $9.90 returned. Sandbox tx
+  `yKVwQSCSYhRtac67FSUse4vBsFXcbtXidBKBoEZoT7zJ52LqXBGzK1C9KbTHHJxi5dtRhTwQArU9kQcWC88Qv57`
+- Keep (hotspot, device off the venue network): hold `ba03e1a9`, $8.00 charged. Sandbox tx
+  `4PpThwAW4xKNah1sy3jigBBSBFztt6TB3Yk7NyVGGkjwPV11xwvCELgihS4dWUM8L7NX1JVD2UNHqGqB8WRwPeAt`
+- Keep (research, three DOI-backed records delivered): hold `b0c10007`, $1.00 charged. Sandbox tx
+  `4eYnhMJzyDniByimZBS3Y43BywsRnEw7rwFKXY9A6iLHZQDvaZnooTGgXT8VD6ceMgJjFeJfA3Br5uXo2RQXpU1h`
+
+Earlier flat $1 pricing:
+
+- Refund (device already on AC, flat $1 pricing): hold `ac7fee75`, $0.01 charged, $0.99 returned. Sandbox tx
   `3bPfkmJsZcBWnNp3YPysCdXkDcc49WZiLymDEUq999xJzgR2V7qrwusarfHUVgWiF5apSguFcJ6PwinQBxLpEx8P`
-- Keep (charging verified after a real plug-in): hold `1f4dc261`, $1.00 charged. Sandbox tx
+- Keep (charging verified after a real plug-in, flat $1 pricing): hold `1f4dc261`, $1.00 charged. Sandbox tx
   `5DeywCCzf3LrGZGX8efajcHCH1mMWbxhi5kuPKzVB2fFN3521WFmGgWyy1qcaK14Zuodr8y7gTzEKNB1oXXXF2jH`
-- Keep (hotspot, device off the venue network): hold `4256f6d4`, $1.00 charged. Sandbox tx
+- Keep (hotspot, device off the venue network, flat $1 pricing): hold `4256f6d4`, $1.00 charged. Sandbox tx
   `5K7gvcKPhgtzQDobVgpT4gJ4yqvUjqicNzjsZnuvmYuBGV8oMAXCb6Frd1HG6APq5b2UFUqphgJvLESESBzrM1rd`
 
 ## What is next
 
 New checks are new lines in the catalog (locker open, package delivered, parking spot free, battery
-swap done). The payment side does not change. After that: hardware-signed readings, venue onboarding,
-and Payment Channels for per minute metering.
+swap done). The payment side does not change. After that: metered billing, which needs an MPP session
+channel because an x402 `upto` hold has one deposit, one claim and a 300 second lifetime;
+hardware-signed readings (the charger or venue hardware signs, not only the desk); venue onboarding;
+mainnet.
 
 ## Built today with
 

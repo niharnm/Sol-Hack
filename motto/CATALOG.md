@@ -7,7 +7,7 @@ Prepared for a PR to github.com/solana-foundation/pay-skills. `service_url` is s
 `catalog/providers/motto/rentals/` is exactly what the PR adds. In the pay-skills fork it lands at `providers/motto/rentals/` (FQN `motto/rentals`):
 
 - `PAY.md`: listing frontmatter plus notes for agents. Started with `pay catalog scaffold`, then written by hand.
-- `openapi.json`: reviewed snapshot of `GET /openapi.json` plus docs. The registry rejects remote OpenAPI URLs, so it is committed. `payTo` and `feePayer` are left out on purpose; the live 402 is authoritative.
+- `openapi.json`: reviewed snapshot of `GET /openapi.json` plus docs. The registry rejects remote OpenAPI URLs, so it is committed. `payTo` and `feePayer` are left out on purpose; the live 402 is authoritative. After the per-item pricing change it is regenerated from the live desk, not hand-edited.
 
 The directory name must equal `name:` (`rentals`) or `pay catalog check` fails, hence the registry layout.
 
@@ -42,8 +42,8 @@ gh pr create --repo solana-foundation/pay-skills --base main --head "$(gh api us
 
 ## Status when this was prepared
 
-- Static check passes: `pay catalog check <PAY.md> --no-probe` and `pay catalog check . --no-probe` (3 endpoints).
-- Live probe passes against https://motto.tail039d5c.ts.net (`pay catalog check . --files providers/motto/rentals/PAY.md --currencies USDC,USDT`, exit 0): both paid endpoints return a 402 x402 `upto` USDC challenge, Solana verdict pass 2/2. The probe prints `FAIL expected 402, got 200` for the free `GET /v1/terms`; it is listed as free in the verdict and does not fail the check.
+- Static check passes: `pay catalog check <PAY.md> --no-probe` and `pay catalog check . --no-probe` (run when the listing had six paid endpoints plus the free terms endpoint; the listing now has seven paid endpoints, research first).
+- Live probe passes against https://motto.tail039d5c.ts.net (`pay catalog check . --files providers/motto/rentals/PAY.md --currencies USDC,USDT`, exit 0): all six paid endpoints of that build returned a 402 x402 `upto` USDC challenge, Solana verdict pass 6/6. The probe prints `FAIL expected 402, got 200` for the free `GET /v1/terms`; it is listed as free in the verdict and does not fail the check. That probe ran under the flat $1 pricing, before the research item; rerun both checks after the desk restarts with seven items and per-item ceilings ($0.10 to $10.00) and the sidecar is regenerated.
 - Merge gate: every paid endpoint must return a 402 x402 or MPP challenge for Solana mainnet USDC or USDT. The sandbox desk already advertises the mainnet network id and USDC mint, but it is backed by the Surfpool sandbox RPC, so holds settle only in the Pay.sh sandbox.
 - Keep the desk reachable until the PR is merged.
 - `/openapi.json` summaries in `src/server.js` match the sidecar and are under the registry's 63 char cap.

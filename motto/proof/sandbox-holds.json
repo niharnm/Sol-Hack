@@ -76,6 +76,180 @@
       },
       "memo": "DESK KEEP hold:4256f6d4 hotspot device_off_venue_network sig:e0519718",
       "settledAt": 1790798959007
+    },
+    {
+      "id": "0992a6d3",
+      "item": "storage",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "2.00",
+      "check_fee_usd": "0.02",
+      "covers": "up to 100 GB of storage for 24 hours",
+      "status": "refunded",
+      "startedAt": 1790803926340,
+      "outcome": "already_handled",
+      "detail": "free_450.6gb_covers_10gb",
+      "charged_usd": "0.02",
+      "returned_usd": "1.98",
+      "settlementTx": "3pnKJk3RtYuWK49SsvNcbCHLCe2FG4LJ5r4kPFqcfpHBgo1WNSsDyCsFUcLQogpR3wAcfuXb6b4MUBrvT8YhBK2",
+      "reading": {
+        "holdId": "0992a6d3",
+        "item": "storage",
+        "outcome": "already_handled",
+        "detail": "free_450.6gb_covers_10gb",
+        "raw": "path=/ free_gb=450.6",
+        "ts": 1790803926353,
+        "signature": "2d3c16a50cf4d82c20f816c9892a181f6ce63834c4ab955db6e57142c896ce492dabafd80cd087006e394b6b86de847221932412d2dcb196143964fd8fa54409",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK REFUND hold:0992a6d3 storage free_450.6gb_covers_10gb sig:2d3c16a5",
+      "settledAt": 1790803928547,
+      "network": "localnet"
+    },
+    {
+      "id": "8b2c5933",
+      "item": "charger",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "3.00",
+      "check_fee_usd": "0.05",
+      "covers": "one charging session, up to 4 hours",
+      "status": "refunded",
+      "startedAt": 1790803975870,
+      "outcome": "not_delivered",
+      "detail": "no_power_before_timeout",
+      "charged_usd": "0.05",
+      "returned_usd": "2.95",
+      "settlementTx": "4uHR631xsCQnUgPpdUzCpLVf5FHD672MESvUwyBmLner6oiQzb6PeeLoCKdKJUwNNs8X7LDCSv4qbRZr6Fdmop9p",
+      "reading": {
+        "holdId": "8b2c5933",
+        "item": "charger",
+        "outcome": "not_delivered",
+        "detail": "no_power_before_timeout",
+        "raw": "Now drawing from 'Battery Power' |  -InternalBattery-0 (id=23789667)\t100%; discharging; 7:58 remaining present: true",
+        "ts": 1790804006323,
+        "signature": "dbe321acbc917cb1ebaf54a39d87e0393c04281146f9a1fc86018cf530ce58d2aae6dc75fdf45157335b977548c1810010b0a17dc90915bd5fb57cf238d6d70b",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK REFUND hold:8b2c5933 charger no_power_before_timeout sig:dbe321ac",
+      "settledAt": 1790804007780,
+      "network": "localnet"
+    },
+    {
+      "id": "6db3b890",
+      "item": "display",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "10.00",
+      "check_fee_usd": "0.10",
+      "covers": "one external monitor, up to 8 hours",
+      "status": "refunded",
+      "startedAt": 1790804074330,
+      "outcome": "not_delivered",
+      "detail": "no_display_before_timeout",
+      "charged_usd": "0.10",
+      "returned_usd": "9.90",
+      "settlementTx": "yKVwQSCSYhRtac67FSUse4vBsFXcbtXidBKBoEZoT7zJ52LqXBGzK1C9KbTHHJxi5dtRhTwQArU9kQcWC88Qv57",
+      "reading": {
+        "holdId": "6db3b890",
+        "item": "display",
+        "outcome": "not_delivered",
+        "detail": "no_display_before_timeout",
+        "raw": "displays=1 external=none",
+        "ts": 1790804095356,
+        "signature": "7eaab5f88bd5d3f7699fcd0f50fd220ebdf7fca8b8fbe3eebe018b8f78b6a21620d6bee30890d88b132b83e504efcfcba75a3bb7e1667e57833992d725642e00",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK REFUND hold:6db3b890 display no_display_before_timeout sig:7eaab5f8",
+      "settledAt": 1790804096926,
+      "network": "localnet"
+    },
+    {
+      "id": "ba03e1a9",
+      "item": "hotspot",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "8.00",
+      "check_fee_usd": "0.10",
+      "covers": "a day pass, up to 24 hours",
+      "status": "kept",
+      "startedAt": 1790804114767,
+      "outcome": "delivered",
+      "detail": "device_off_venue_network",
+      "charged_usd": "8.00",
+      "returned_usd": "0.00",
+      "settlementTx": "4PpThwAW4xKNah1sy3jigBBSBFztt6TB3Yk7NyVGGkjwPV11xwvCELgihS4dWUM8L7NX1JVD2UNHqGqB8WRwPeAt",
+      "reading": {
+        "holdId": "ba03e1a9",
+        "item": "hotspot",
+        "outcome": "delivered",
+        "detail": "device_off_venue_network",
+        "raw": "gateway=10.104.0.1 venue=unset",
+        "ts": 1790804114788,
+        "signature": "d176f533af4ae7c33ae0de097a7a665aacd5987d5c27a3101b0c6275e9a32045f55a3bd2d485a1f32ba0ac0f1aa1a6051cdf9581c1e97de19e21638bbc568f04",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK KEEP hold:ba03e1a9 hotspot device_off_venue_network sig:d176f533",
+      "settledAt": 1790804116086,
+      "network": "localnet"
+    },
+    {
+      "id": "b0c10007",
+      "item": "research",
+      "payer": "8rMNQCLJdGDofmXJ4PWmPZo9hAkcv9sfJMnbwgiaufV3",
+      "hold_usd": "1.00",
+      "check_fee_usd": "0.00",
+      "covers": "three DOI-backed citation records with titles",
+      "status": "kept",
+      "startedAt": 1790804175272,
+      "outcome": "delivered",
+      "detail": "citation_pack_delivered",
+      "charged_usd": "1.00",
+      "returned_usd": "0.00",
+      "settlementTx": "4eYnhMJzyDniByimZBS3Y43BywsRnEw7rwFKXY9A6iLHZQDvaZnooTGgXT8VD6ceMgJjFeJfA3Br5uXo2RQXpU1h",
+      "reading": {
+        "holdId": "b0c10007",
+        "item": "research",
+        "outcome": "delivered",
+        "detail": "citation_pack_delivered",
+        "query": "x402 payment channels for autonomous agents",
+        "provider": "Crossref public metadata API",
+        "raw": "3 distinct DOI-backed citation records delivered",
+        "checks": {
+          "required_count": 3,
+          "received_count": 3,
+          "distinct_dois": true,
+          "titles_present": true,
+          "passed": true
+        },
+        "deliverable": {
+          "type": "citation_pack",
+          "query": "x402 payment channels for autonomous agents",
+          "citations": [
+            {
+              "title": "Purpose-Built Payment Infrastructure for Autonomous AI Agents",
+              "doi": "10.2139/ssrn.6265040",
+              "url": "https://doi.org/10.2139%2Fssrn.6265040",
+              "publisher": "Elsevier BV"
+            },
+            {
+              "title": "Contingent Payment Mechanisms for Future Coordination",
+              "doi": "10.65109/jpyg8541",
+              "url": "https://doi.org/10.65109%2Fjpyg8541",
+              "publisher": "IEEE Computer Society"
+            },
+            {
+              "title": "Contingent Payment Mechanisms for Resource Utilization",
+              "doi": "10.65109/olnf2092",
+              "url": "https://doi.org/10.65109%2Folnf2092",
+              "publisher": "IEEE Computer Society"
+            }
+          ]
+        },
+        "limitations": "Checks cover count, unique DOI identifiers and nonempty titles. They do not establish semantic relevance, paper quality, DOI resolution or full-text access. Crossref metadata is public; this service packages and verifies it.",
+        "ts": 1790804175830,
+        "signature": "ec71ec9e3a428e6820958c32758891392a34e1c6d53dc2ba2bf89c685fb5f7478773ac023b19353a16bceee988a49d588b997c24ab6856a515965ee3c5e2170d",
+        "devicePublicKey": "c61ce7cb5f303fe53ef8ce5cac65fa74de791b38a3e9ae0e7ea97d916ca31581"
+      },
+      "memo": "DESK KEEP hold:b0c10007 research citation_pack_delivered sig:ec71ec9e",
+      "settledAt": 1790804176989,
+      "network": "localnet"
     }
   ]
 }

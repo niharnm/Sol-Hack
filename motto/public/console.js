@@ -20,7 +20,7 @@ function renderProgress(h) {
   text('progress-count',`${!h?0:settled(h)?4:Math.max(0,step)} / 4 complete`);
   $('delivery-panel').classList.toggle('loading',Boolean(pending(h)));
 }
-const pending = h => h && ['checking','waiting_for_power','waiting_for_display','judging','fetching','validating','settling'].includes(h.status);
+const pending = h => h && ['checking','waiting_for_power','waiting_for_delivery','judging','fetching','validating','settling'].includes(h.status);
 const settled = h => h && ['kept','refunded'].includes(h.status);
 const rank = h => h?.status === 'checking' ? 0 : pending(h) ? 1 : 2;
 const human = s => String(s ?? '').replaceAll('_',' ');
@@ -81,12 +81,12 @@ function inspect() {
   text('inspector-type',inspected.toUpperCase());
   const data={
     agent:['Buyer agent','The desk sees the payer address. Agent identity, task, and tool calls are not included in this API stream.',[['Payer',h?.payer],['Agent trace','Observe the buyer terminal']]],
-    terms:['Terms & budget','Published service terms. This does not prove that the selected buyer fetched them.',[['Service',h?.item],['Check',terms?.items?.[h?.item]?.check],['Maximum authorization',terms?.items?.[h?.item]?.hold_usd],['Check fee',terms?.items?.[h?.item]?.check_fee_usd]]],
-    authorize:['Payment authorization','The desk creates a hold record after Pay.sh accepts the paid request.',[['Hold',h?.id],['Payer',h?.payer],['Authorized ceiling',h?.hold_usd],['Opened',h?.startedAt?new Date(h.startedAt).toISOString():null]]],
+    terms:['Terms & budget','Published service terms. This does not prove that the selected buyer fetched them.',[['Service',h?.item],['Check',terms?.items?.[h?.item]?.check],['Maximum authorization',terms?.items?.[h?.item]?.hold_usd],['Check fee',terms?.items?.[h?.item]?.check_fee_usd],['Covers',terms?.items?.[h?.item]?.covers]]],
+    authorize:['Payment authorization','The desk creates a hold record after Pay.sh accepts the paid request.',[['Hold',h?.id],['Payer',h?.payer],['Authorized ceiling',h?.hold_usd],['Check fee',h?.check_fee_usd],['Opened',h?.startedAt?new Date(h.startedAt).toISOString():null]]],
     evidence:['Evidence check','Acceptance checks and provider evidence for the purchased result.',[['Contract',r?.condition??terms?.items?.[h?.item]?.check],['Provider',r?.provider??h?.provider],['Checks',r?.checks],['Evidence',r?.evidence??r?.raw??h?.raw],['Timestamp',r?.ts?new Date(r.ts).toISOString():null]]],
     decision:['Settlement decision','The desk’s reported outcome. A verified need is not necessarily proof that a service was provisioned.',[['Outcome',h?.outcome],['Reason',r?.reason??h?.detail],['Verifier model',r?.model??'Deterministic checks; no model recorded'],['Model cost','Not measured by this API']]],
     settle:['Solana settlement','Pay.sh reports the settlement result. This console does not independently query chain finality.',[['Payment scheme','x402 upto'],['Record network',h?.network??'Not recorded on this older hold'],['Status',h?.status],['Settlement error',h?.settleError??'None reported']]],
-    receipt:['Signed receipt','Inspect the exact deliverable and evidence returned by Motto and verify its Ed25519 signature locally.',[['Hold',h?.id],['Service',h?.item],['Outcome',h?.outcome],['Reason',r?.reason??h?.detail]]]
+    receipt:['Signed receipt','Inspect the exact deliverable and evidence returned by Motto and verify its Ed25519 signature locally.',[['Hold',h?.id],['Service',h?.item],['Outcome',h?.outcome],['Check fee',h?.check_fee_usd],['Reason',r?.reason??h?.detail]]]
   }[inspected];
   text('inspector-title',data[0]);text('inspector-desc',data[1]);fields(data[2]);
   const signed=Boolean(r?.signature && r?.devicePublicKey);
@@ -130,7 +130,7 @@ function render() {
   text('run-status',h?.item==='research'&&h.status==='kept'?'DELIVERED':(statusNames[h?.status]??human(h?.status??'idle')).toUpperCase());$('graph').classList.toggle('running',Boolean(pending(h)));
   node('authorize',h?'observed':null);node('evidence',pending(h)?'working':h?.reading?'observed':null);node('decision',h?.outcome?'observed':null);node('settle',settled(h)?'observed':['settle_failed','interrupted'].includes(h?.status)?'error':null);node('receipt',h?.reading?.signature?'observed':null);
   text('authorize-label',h?usd(h.hold_usd)+' ceiling accepted':'Awaiting paid request');
-  text('evidence-label',h?.status==='waiting_for_power'?'Waiting for power':h?.status==='waiting_for_display'?'Waiting for display':h?.status==='judging'?'Model evaluating evidence':h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running service':h?.reading?'Evidence returned':'Provider response / contract');
+  text('evidence-label',h?.status==='waiting_for_power'?'Waiting for power':h?.status==='waiting_for_delivery'?'Waiting for delivery':h?.status==='judging'?'Model evaluating evidence':h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running service':h?.reading?'Evidence returned':'Provider response / contract');
   text('decision-label',human(h?.outcome??'Waiting for evidence'));
   text('settle-label',settled(h)?usd(h.charged_usd)+' charged':h?.status==='settle_failed'?'Not confirmed':'No confirmed result');
   text('receipt-label',h?.reading?.signature?'Ed25519 signature present':'Awaiting signature');
@@ -157,7 +157,8 @@ async function sync() {
   if(results[0].status==='fulfilled'){
     terms=results[0].value;
     if(!terms.console_purchase)text('request-feedback','Remote console: enter a topic to get its paid API command.');text('network',terms.network==='localnet'?'SOLANA · TEST PAYMENTS':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
-    $('services').replaceChildren(...Object.keys(terms.items??{}).filter(name=>['research','verify'].includes(name)).map(name=>{const e=document.createElement('span');e.className='service';e.textContent=human(name);return e;}));
+    $('services').replaceChildren(...Object.entries(terms.items??{}).filter(([name])=>['research','verify'].includes(name)).map(([name,it])=>{const e=document.createElement('span');e.className='service';e.textContent=human(name)+'  '+usd(it?.hold_usd)+' hold · '+(Number(it?.check_fee_usd)>0?usd(it.check_fee_usd)+' check':'no check fee');if(it?.covers)e.title=it.covers;return e;}));
+    const item=(/\/v1\/rent\/([a-z_]+)/.exec($('purchase-command')?.textContent??'')||[])[1]??'charger',ceiling=terms.items?.[item]?.hold_usd;if(ceiling!=null&&$('dialog-ceiling'))text('dialog-ceiling',usd(ceiling)+' test USDC');
   }
   if(results[1].status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
   ready=true;for(const h of queue.splice(0))ingest(h,'live');render();
