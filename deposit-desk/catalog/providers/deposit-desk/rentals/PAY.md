@@ -31,7 +31,7 @@ Status: demo. The desk is currently demoed in the Pay.sh sandbox, which settles 
 | hotspot | `delivered`: device off the venue network, hotspot rental kept | $1.00 | $0.00 |
 | both | `check_failed`: the check itself errored | $0.01 | $0.99 |
 
-A successful call returns `hold_id`, `item`, `outcome`, `decision` (`kept` or `refunded`), `charged_usd`, `returned_usd`, `reason` (the rule that applied), `signed_reading`, `settlement_tx` and `network`. `signed_reading` carries the raw device observation, a hex ed25519 `signature`, and the `devicePublicKey` that `GET /v1/terms` also publishes. A failed check returns an unsigned reading.
+A successful call returns `hold_id`, `item`, `outcome`, `decision` (`kept`, `refunded`, or `settle_failed` when the settlement transaction failed and no money moved, with `settle_error`), `charged_usd`, `returned_usd`, `reason` (the rule that applied), `signed_reading`, `settlement_tx` and `network`. `signed_reading` carries the raw device observation, a hex ed25519 `signature`, and the `devicePublicKey` that `GET /v1/terms` also publishes. A failed check returns an unsigned reading.
 
 ## Spend-aware usage
 

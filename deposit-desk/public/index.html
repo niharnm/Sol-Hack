@@ -4,98 +4,642 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Deposit Desk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f5a524'/%3E%3Cpath d='M10 16.5l4 4 8-9' fill='none' stroke='%230b0d10' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #0b0d10; --panel: #13161b; --line: #232830; --text: #e8eaed; --muted: #8b93a1;
+    --bg: #0b0d10; --panel: #13161b; --line: #232830; --text: #e8eaed; --muted: #8b93a1; --text-2: #b4bac5;
     --keep: #f5a524; --refund: #17c964; --wait: #6c8cff; --fail: #f31260;
+    /* Benchmark chart tokens. Accent and gray were checked with the dataviz validator against the panel surface. */
+    --viz-accent: #3987e5; --viz-gray: #6b7280; --viz-axis: #343b46;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
-  header { padding: 28px 32px 8px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
-  .tag { color: var(--muted); margin-top: 4px; }
-  .net { font: 12px ui-monospace, monospace; color: var(--muted); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 16px 32px; }
-  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
-  .stat b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
-  .stat span { color: var(--muted); font-size: 13px; }
-  .loop { padding: 0 32px 8px; color: var(--muted); font-size: 13px; }
-  .loop em { color: var(--text); font-style: normal; }
-  main { padding: 8px 32px 40px; display: grid; gap: 10px; }
-  .hold { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--wait); border-radius: 12px; padding: 14px 18px; display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; animation: in .3s ease; }
-  .hold.kept { border-left-color: var(--keep); }
-  .hold.refunded { border-left-color: var(--refund); }
-  .hold.settle_failed { border-left-color: var(--fail); }
-  .title { font-weight: 600; }
-  .badge { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 3px 10px; border-radius: 999px; align-self: start; }
-  .kept .badge { background: color-mix(in srgb, var(--keep) 18%, transparent); color: var(--keep); }
-  .refunded .badge { background: color-mix(in srgb, var(--refund) 18%, transparent); color: var(--refund); }
-  .checking .badge, .waiting_for_power .badge { background: color-mix(in srgb, var(--wait) 18%, transparent); color: var(--wait); }
-  .settle_failed .badge { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
-  .meta { color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
-  .money { font-variant-numeric: tabular-nums; }
-  .links { grid-column: 1 / -1; font: 12px ui-monospace, monospace; display: flex; gap: 14px; flex-wrap: wrap; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
   a { color: #8fb2ff; text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .empty { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
-  @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
-  @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } header, .stats, main, .loop { padding-left: 16px; padding-right: 16px; } }
+  button { font: inherit; }
+  :focus-visible { outline: 2px solid var(--wait); outline-offset: 2px; }
+  .page { max-width: 1760px; margin: 0 auto; padding: 0 clamp(16px, 2.4vw, 48px) 56px; display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(14px, 1.6vw, 28px); }
+
+  /* State colors drive the hero card and the list rows. */
+  [data-status] { --c: var(--wait); }
+  [data-status="kept"] { --c: var(--keep); }
+  [data-status="refunded"] { --c: var(--refund); }
+  [data-status="settle_failed"] { --c: var(--fail); }
+  [data-status="interrupted"] { --c: var(--muted); }
+
+  /* Header and controls */
+  .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; padding-top: clamp(16px, 2vw, 32px); }
+  h1 { margin: 0; font-size: clamp(26px, 2.6vw, 48px); letter-spacing: -0.02em; line-height: 1.1; }
+  .tag { color: var(--muted); margin-top: 4px; font-size: clamp(14px, 1.3vw, 22px); }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .net { display: inline-flex; align-items: center; gap: 8px; font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); border: 1px solid var(--line); padding: 8px 12px; border-radius: 999px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; line-height: 1; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; text-decoration: none; }
+  .btn:hover { border-color: var(--muted); text-decoration: none; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; display: inline-block; }
+  .dot.on { background: var(--refund); }
+  .dot.warn { background: var(--keep); }
+  kbd { font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; }
+
+  /* Counters: sized from each tile's own width so they stay readable from the back of a room. */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(10px, 1.2vw, 20px); }
+  .stat { container-type: inline-size; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: clamp(14px, 1.6vw, 26px); }
+  .stat b { display: block; font-size: clamp(40px, 6vw, 110px); font-size: clamp(40px, 28cqw, 220px); line-height: 1.02; font-weight: 800; letter-spacing: -0.035em; transform-origin: left center; }
+  .stat span { display: block; margin-top: 8px; color: var(--muted); font-size: clamp(14px, 6cqw, 30px); }
+  .stat b[data-long] { font-size: clamp(36px, 24cqw, 190px); }
+  .stat.kept b { color: var(--keep); }
+  .stat.refunded b { color: var(--refund); }
+
+  /* Hero card for the newest hold */
+  .hero { position: relative; background: var(--panel); border: 2px solid color-mix(in srgb, var(--c) 55%, var(--line)); border-radius: 26px; padding: clamp(18px, 2.6vw, 44px); display: grid; gap: clamp(10px, 1.4vw, 22px); transition: border-color .4s; }
+  .hero::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(110% 100% at 0% 0%, color-mix(in srgb, var(--c) 16%, transparent), transparent 62%); }
+  .hero > * { position: relative; }
+  .hero-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .hero-item { font-size: clamp(22px, 2.6vw, 46px); font-weight: 700; letter-spacing: -0.01em; }
+  .hero-id { margin-left: 14px; color: var(--muted); font: 500 clamp(14px, 1.4vw, 24px) ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .hero-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: clamp(12px, 2vw, 36px) clamp(24px, 4vw, 72px); align-items: end; }
+  .hero-state { display: flex; align-items: center; gap: clamp(12px, 1.8vw, 30px); color: var(--c); transition: color .35s; }
+  .state-icon { width: clamp(48px, 8vw, 140px); height: clamp(48px, 8vw, 140px); flex: none; }
+  .state-icon svg { display: block; width: 100%; height: 100%; }
+  .state-word.long { font-size: clamp(36px, 7.4vw, 136px); }
+  .state-word { font-size: clamp(52px, 10.5vw, 190px); line-height: .92; font-weight: 800; letter-spacing: -0.035em; text-transform: uppercase; transform-origin: left center; }
+  .hero-why { margin: clamp(8px, 1vw, 16px) 0 0; font-size: clamp(18px, 2vw, 34px); line-height: 1.3; max-width: 32em; }
+  .hero-money { display: grid; gap: clamp(4px, .6vw, 10px); min-width: min(100%, 13em); }
+  .m-row { display: flex; justify-content: space-between; align-items: baseline; gap: 28px; color: var(--muted); font-size: clamp(18px, 2vw, 34px); }
+  .m-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .m-row.big { font-size: clamp(26px, 3.2vw, 56px); color: var(--text-2); }
+  .m-row.big b { color: var(--c); }
+  .hero-meta { color: var(--muted); font-size: clamp(13px, 1.2vw, 18px); }
+  .links { display: flex; flex-wrap: wrap; gap: 6px 22px; font: clamp(12px, 1.25vw, 18px)/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .lk { color: var(--muted); }
+  a.lk { color: #8fb2ff; }
+  .lk b { font-weight: 600; color: var(--text-2); }
+  .lk.err { color: #ff8aa8; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; line-height: 1.2; }
+  .pill.sandbox { color: var(--text); background: color-mix(in srgb, var(--text) 12%, transparent); border: 1px solid color-mix(in srgb, var(--text) 28%, transparent); }
+  .hero .pill { font-size: clamp(12px, 1.2vw, 18px); padding: 6px 14px; }
+
+  /* Empty state */
+  .empty { display: grid; justify-items: center; text-align: center; gap: 14px; padding: clamp(28px, 6vw, 96px) 20px; border: 2px dashed var(--line); border-radius: 26px; color: var(--muted); }
+  .empty-ring { width: clamp(34px, 4vw, 64px); height: clamp(34px, 4vw, 64px); border-radius: 50%; border: 4px solid var(--wait); animation: ping 1.8s ease-out infinite; }
+  .empty-title { font-size: clamp(24px, 3.4vw, 60px); font-weight: 700; color: var(--text); letter-spacing: -0.02em; line-height: 1.15; }
+  .empty-sub { font-size: clamp(15px, 1.5vw, 24px); max-width: 52em; }
+  .empty-sub em { color: var(--text); font-style: normal; font-weight: 600; }
+
+  /* Compact list of earlier holds */
+  .sec { margin: 0 0 10px; font-size: clamp(14px, 1.3vw, 20px); color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .rows { display: grid; gap: 8px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--c); border-radius: 12px; padding: 12px 18px; font-size: clamp(15px, 1.4vw, 22px); }
+  .badge { min-width: 7.6em; text-align: center; font-size: .72em; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 5px 12px; border-radius: 999px; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+  .r-title { flex: 1 1 13em; }
+  .r-id { margin-left: 8px; color: var(--muted); font: .85em ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .r-money { color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .r-links { display: flex; gap: 14px; flex-wrap: wrap; font: .75em ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .more { color: var(--muted); padding: 8px 4px 0; }
+
+  /* Benchmark */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: clamp(16px, 2vw, 32px); }
+  .card h2 { margin: 0; font-size: clamp(20px, 2vw, 34px); letter-spacing: -0.01em; }
+  .bench-take { margin: 8px 0 0; font-size: clamp(18px, 1.9vw, 32px); font-weight: 600; line-height: 1.25; }
+  .bench-sub { margin: 4px 0 0; color: var(--muted); font-size: clamp(14px, 1.2vw, 20px); }
+  .chart-wrap { margin-top: 14px; overflow-x: auto; }
+  .chart { display: block; width: 100%; min-width: 560px; height: auto; }
+  .chart .axis { stroke: var(--viz-axis); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .chart .hit { fill: transparent; }
+  .chart .mark { fill: var(--viz-gray); }
+  .chart .hl .mark { fill: var(--viz-accent); }
+  .chart .bar:hover .mark { filter: brightness(1.25); }
+  .chart .cat { fill: var(--text-2); font-weight: 500; }
+  .chart .hl .cat { fill: var(--text); font-weight: 700; }
+  .chart .val { fill: var(--text); font-weight: 700; }
+  .honesty { margin: 14px 0 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); font-size: clamp(14px, 1.3vw, 20px); }
+  .bench-meta { margin: 6px 0 0; color: var(--muted); font-size: clamp(12px, 1vw, 16px); }
+  .table-wrap { margin-top: 18px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: clamp(15px, 1.4vw, 22px); }
+  th, td { padding: 10px 14px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--muted); font-weight: 600; font-size: .8em; }
+  tbody th { font-weight: 500; }
+  tr.hl th, tr.hl td { font-weight: 700; }
+  td small { color: var(--muted); font-weight: 400; }
+
+  /* Motion */
+  @keyframes fade { 50% { opacity: .5; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes ping { 0% { transform: scale(.6); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 40%, transparent); } 50% { box-shadow: 0 0 0 16px transparent; } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-28px) scale(.98); } }
+  @keyframes ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 80%, transparent); } 100% { box-shadow: 0 0 0 80px transparent; } }
+  @keyframes wash { 0% { background-color: color-mix(in srgb, var(--c) 40%, var(--panel)); } 100% { background-color: var(--panel); } }
+  @keyframes pop { 0% { transform: scale(.5); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+  @keyframes bump { 40% { transform: scale(1.15); } }
+  @keyframes slide { from { opacity: 0; transform: translateY(-10px); } }
+  .hero[data-status="checking"], .hero[data-status="waiting_for_power"] { animation: glow 1.6s ease-in-out infinite; }
+  .hero[data-status="checking"] .state-word, .hero[data-status="waiting_for_power"] .state-word,
+  .row[data-status="checking"] .badge, .row[data-status="waiting_for_power"] .badge { animation: fade 1.2s ease-in-out infinite; }
+  .hero[data-status="checking"] .state-icon svg, .hero[data-status="waiting_for_power"] .state-icon svg { animation: spin 1.1s linear infinite; }
+  .hero.enter { animation: drop .5s cubic-bezier(.2, .9, .3, 1); }
+  .hero.flash { animation: ring 1.1s ease-out, wash 1.5s ease-out; }
+  .pop { animation: pop .6s cubic-bezier(.2, 1.5, .4, 1); }
+  .bump { animation: bump .6s cubic-bezier(.2, 1.6, .4, 1); }
+  .row.enter { animation: slide .4s ease-out; }
+  .row.flash { animation: wash 1.6s ease-out; }
+
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .hero-body { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    html { scroll-behavior: auto; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>Deposit Desk</h1>
-    <div class="tag">Agents only pay for things that actually happened.</div>
-  </div>
-  <div class="net" id="net">connecting…</div>
-</header>
-<section class="stats">
-  <div class="stat"><b id="s-holds">0</b><span>holds</span></div>
-  <div class="stat"><b id="s-kept">0</b><span>rentals kept</span></div>
-  <div class="stat"><b id="s-refunded">0</b><span>holds refunded</span></div>
-  <div class="stat"><b id="s-saved">$0.00</b><span>returned to agents</span></div>
-</section>
-<div class="loop"><em>Hold</em> $1 USDC → <em>check</em> the device → <em>keep</em> if the need is real, <em>refund</em> $0.99 if it is already handled. Settled on Solana via Pay.sh x402 upto.</div>
-<main id="list"><div class="empty">Waiting for an agent to rent something…</div></main>
-<script>
-  const holds = new Map();
-  let network = 'localnet';
-  const explorer = sig => network === 'mainnet'
-    ? `https://explorer.solana.com/tx/${sig}`
-    : null;
-  const label = { charger: 'Charger', hotspot: 'Hotspot' };
-  const status = { checking: 'checking', waiting_for_power: 'waiting for power', kept: 'kept', refunded: 'refunded', settle_failed: 'settle failed' };
-  const short = s => s ? `${s.slice(0, 6)}…${s.slice(-6)}` : '';
-  const txLink = (name, sig) => {
-    if (!sig) return '';
-    const url = explorer(sig);
-    return url ? `<a href="${url}" target="_blank" rel="noopener">${name} ${short(sig)}</a>` : `<span>${name} ${short(sig)}</span>`;
-  };
+<div class="page">
+  <header class="top">
+    <div>
+      <h1>Deposit Desk</h1>
+      <div class="tag">Agents only pay for things that actually happened.</div>
+    </div>
+    <div class="controls">
+      <span class="net"><i class="dot" id="dot" title="connecting"></i><span id="net">connecting…</span></span>
+      <a class="btn" id="bench-link" href="#bench" hidden>Benchmark</a>
+      <button class="btn" id="sound" type="button" aria-pressed="false"><i class="dot"></i><span>Sound off</span></button>
+      <button class="btn" id="fs" type="button" title="Toggle fullscreen"><span>Fullscreen</span> <kbd>F</kbd></button>
+    </div>
+  </header>
 
-  function render() {
-    const list = [...holds.values()].sort((a, b) => b.startedAt - a.startedAt);
-    const done = list.filter(h => h.status === 'kept' || h.status === 'refunded');
-    document.getElementById('s-holds').textContent = list.length;
-    document.getElementById('s-kept').textContent = done.filter(h => h.status === 'kept').length;
-    document.getElementById('s-refunded').textContent = done.filter(h => h.status === 'refunded').length;
-    document.getElementById('s-saved').textContent = '$' + done.reduce((t, h) => t + Number(h.returned_usd || 0), 0).toFixed(2);
-    const el = document.getElementById('list');
-    if (!list.length) return;
-    el.innerHTML = list.map(h => `
-      <article class="hold ${h.status}">
-        <div class="title">${label[h.item] ?? h.item} · hold ${h.id}
-          <span class="money">${h.charged_usd ? `· charged $${h.charged_usd} · returned $${h.returned_usd}` : `· $${h.hold_usd} on hold`}</span></div>
-        <div class="badge">${status[h.status] ?? h.status}</div>
-        <div class="meta">${h.detail ? h.detail.replaceAll('_', ' ') : 'running check…'}${h.payer ? ` · agent ${short(h.payer)}` : ''}${h.reading?.signature ? ` · device signed ${h.reading.signature.slice(0, 8)}` : ''}</div>
-        <div class="links">${txLink('settlement', h.settlementTx)}${txLink('receipt memo', h.receiptTx)}${h.settleError ? `<span>${h.settleError}</span>` : ''}</div>
-      </article>`).join('');
+  <section class="stats" aria-label="Totals">
+    <div class="stat"><b id="s-holds">0</b><span>holds</span></div>
+    <div class="stat kept"><b id="s-kept">0</b><span>rentals kept</span></div>
+    <div class="stat refunded"><b id="s-refunded">0</b><span>holds refunded</span></div>
+    <div class="stat refunded"><b id="s-saved">$0.00</b><span>returned to agents</span></div>
+  </section>
+
+  <section id="stage" aria-label="Newest hold">
+    <article class="hero" id="hero" data-status="checking" hidden>
+      <div class="hero-head">
+        <div><span class="hero-item" id="h-item"></span><span class="hero-id" id="h-id"></span></div>
+        <div id="h-pills"></div>
+      </div>
+      <div class="hero-body">
+        <div>
+          <div class="hero-state"><span class="state-icon" id="h-icon"></span><span class="state-word" id="h-word" role="status"></span></div>
+          <p class="hero-why" id="h-why"></p>
+        </div>
+        <div class="hero-money" id="h-money"></div>
+      </div>
+      <div class="hero-meta" id="h-meta"></div>
+      <div class="links" id="h-links"></div>
+    </article>
+    <div class="empty" id="empty">
+      <div class="empty-ring"></div>
+      <div class="empty-title">Waiting for an agent to rent something…</div>
+      <div class="empty-sub"><em>Hold</em> $1 USDC → <em>check</em> the device → <em>keep</em> if the need is real, <em>refund</em> $0.99 if it is already handled. Settled on Solana via Pay.sh x402 upto.</div>
+    </div>
+  </section>
+
+  <section id="earlier" hidden>
+    <h2 class="sec">Earlier holds</h2>
+    <div class="rows" id="rows"></div>
+    <div class="more" id="more"></div>
+  </section>
+
+  <section class="card" id="bench" hidden>
+    <h2>Benchmark</h2>
+    <p class="bench-take" id="bench-take"></p>
+    <p class="bench-sub" id="bench-sub"></p>
+    <div class="chart-wrap" id="bench-chart"></div>
+    <p class="honesty" id="bench-note"></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Run</th><th>Needs met</th><th>Missed needs</th><th>Total spend</th><th>Model cost</th></tr></thead>
+        <tbody id="bench-rows"></tbody>
+      </table>
+    </div>
+    <p class="bench-meta" id="bench-meta"></p>
+  </section>
+</div>
+
+<script>
+  /* ---------- helpers ---------- */
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const short = s => { s = String(s ?? ''); return s ? `${s.slice(0, 6)}…${s.slice(-6)}` : ''; };
+  const money = v => '$' + Number(v || 0).toFixed(2);
+  const humanize = s => String(s ?? '').replaceAll('_', ' ');
+  const sentence = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const isSig = s => typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,100}$/.test(s);
+  // Only touch the DOM when the content changed, so running animations are not restarted.
+  const setHTML = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+  const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+  function restart(el, cls, ms = 1800) {
+    clearTimeout(el['_t' + cls]);
+    el.classList.remove(cls);
+    void el.offsetWidth; // force a reflow so the animation replays
+    el.classList.add(cls);
+    el['_t' + cls] = setTimeout(() => el.classList.remove(cls), ms);
   }
 
-  fetch('/v1/terms').then(r => r.json()).then(t => { network = t.network; document.getElementById('net').textContent = `solana ${t.network} · device ${t.devicePublicKey.slice(0, 8)}`; render(); });
-  fetch('/v1/holds').then(r => r.json()).then(({ holds: list }) => { list.forEach(h => holds.set(h.id, h)); render(); });
+  /* ---------- state ---------- */
+  const holds = new Map();
+  const rows = new Map();
+  let terms = null;
+  let network = 'localnet'; // default to sandbox so an Explorer link is never shown by accident
+  let ready = false; // false until the first snapshot is applied, so nothing animates or sounds on load
+  let heroId = null;
+  const MAX_ROWS = 12;
+  const isMainnet = () => network === 'mainnet' || network === 'mainnet-beta';
+  const RANK = { checking: 0, waiting_for_power: 1 }; // every other status counts as settled (rank 2)
+  const rank = s => RANK[s] ?? 2;
+  const isPending = h => rank(h.status) < 2;
+  const LABEL = { charger: 'Charger', hotspot: 'Hotspot' };
+  const WORD = { checking: 'Checking', waiting_for_power: 'Checking', kept: 'Kept', refunded: 'Refunded', settle_failed: 'Failed', interrupted: 'Interrupted' };
+  const ICON_ATTR = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+  const ICON = {
+    checking: `<svg ${ICON_ATTR}><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9"/></svg>`,
+    kept: `<svg ${ICON_ATTR}><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-7"/></svg>`,
+    refunded: `<svg ${ICON_ATTR}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
+    settle_failed: `<svg ${ICON_ATTR}><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 16.5v.5"/></svg>`,
+  };
+  const iconFor = s => ICON[s === 'waiting_for_power' ? 'checking' : s] ?? ICON.settle_failed;
+
+  /* ---------- sound: WebAudio oscillators only, no audio files ---------- */
+  const SOUND_KEY = 'dd.sound';
+  let soundOn = false;
+  try { soundOn = localStorage.getItem(SOUND_KEY) === 'on'; } catch (e) { /* storage blocked: stay off */ }
+  let actx = null; // created only inside a user gesture, because browsers block audio before one
+
+  function tone(ctx, out, { f, t, peak = 0.2, attack = 0.004, decay = 0.4, type = 'sine', to }) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f, t);
+    if (to) osc.frequency.exponentialRampToValueAtTime(to, t + attack + decay);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+    osc.connect(g);
+    g.connect(out);
+    osc.start(t);
+    osc.stop(t + attack + decay + 0.02);
+  }
+  // Inharmonic partials that decay faster than the fundamental read as struck metal.
+  function bell(ctx, out, f, t, peak, decay) {
+    [[1, 1, 1], [2.76, 0.4, 0.6], [5.4, 0.18, 0.35]].forEach(([ratio, p, d]) => {
+      if (f * ratio < 12000) tone(ctx, out, { f: f * ratio, t, peak: peak * p, decay: decay * d });
+    });
+  }
+  // Short band-passed noise burst, used for the mechanical latch of the register.
+  function click(ctx, out, t, peak, dur, freq) {
+    const n = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = ctx.createBufferSource();
+    const bp = ctx.createBiquadFilter();
+    const g = ctx.createGain();
+    src.buffer = buf;
+    bp.type = 'bandpass';
+    bp.frequency.value = freq;
+    bp.Q.value = 0.8;
+    g.gain.value = peak;
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(out);
+    src.start(t);
+  }
+  // KEPT: cash register. Latch click, low drawer thud, then two bells.
+  function voiceKept(ctx, out, t) {
+    click(ctx, out, t, 0.6, 0.06, 2200);
+    tone(ctx, out, { f: 200, to: 60, t, peak: 0.5, decay: 0.16, type: 'triangle' });
+    bell(ctx, out, 1568, t + 0.14, 0.22, 1.0);
+    bell(ctx, out, 2093, t + 0.22, 0.18, 1.2);
+  }
+  // REFUNDED: coins tumbling back, then a rising two note "bling".
+  function voiceRefunded(ctx, out, t) {
+    [2349, 1976, 2637, 2093, 2794, 2349].forEach((f, i) => bell(ctx, out, f, t + i * 0.07, 0.15, 0.25));
+    bell(ctx, out, 2637, t + 0.5, 0.2, 0.6);
+    bell(ctx, out, 3951, t + 0.6, 0.16, 0.9);
+  }
+  // Sound check played when the toggle is switched on.
+  function voiceTick(ctx, out, t) {
+    tone(ctx, out, { f: 880, t, peak: 0.12, decay: 0.08 });
+    tone(ctx, out, { f: 1320, t: t + 0.07, peak: 0.12, decay: 0.1 });
+  }
+  function playVoice(voice) {
+    if (!soundOn || !actx || actx.state !== 'running') return;
+    const out = actx.createGain();
+    out.gain.value = 0.7;
+    out.connect(actx.destination);
+    voice(actx, out, actx.currentTime + 0.03);
+  }
+  const playFor = status => playVoice(status === 'kept' ? voiceKept : voiceRefunded);
+
+  function unlockAudio() {
+    if (!actx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return Promise.resolve();
+      actx = new AC();
+      actx.onstatechange = renderSound;
+    }
+    return actx.state === 'suspended' ? actx.resume().catch(() => {}) : Promise.resolve();
+  }
+  function renderSound() {
+    const armed = soundOn && actx && actx.state === 'running';
+    const btn = $('sound');
+    btn.setAttribute('aria-pressed', String(soundOn));
+    btn.firstElementChild.className = 'dot' + (armed ? ' on' : soundOn ? ' warn' : '');
+    btn.lastElementChild.textContent = armed ? 'Sound on' : soundOn ? 'Sound on, click page to arm' : 'Sound off';
+  }
+  function setSound(on) {
+    soundOn = on;
+    try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (e) { /* storage blocked: not remembered */ }
+    renderSound();
+    if (on) unlockAudio().then(() => { playVoice(voiceTick); renderSound(); });
+  }
+  $('sound').addEventListener('click', () => setSound(!soundOn));
+  // A remembered "on" still needs one gesture per page load before the browser allows audio.
+  ['pointerdown', 'keydown', 'click'].forEach(ev => addEventListener(ev, () => { if (soundOn) unlockAudio().then(renderSound); }, { capture: true }));
+  renderSound();
+
+  /* ---------- rendering ---------- */
+  function txItem(name, sig) {
+    if (!sig) return '';
+    const text = `<b>${name}</b> ${esc(short(sig))}`;
+    // Explorer links only on mainnet. In the sandbox the signature is shown as plain text.
+    return isMainnet() && isSig(sig)
+      ? `<a class="lk" href="https://explorer.solana.com/tx/${esc(sig)}" target="_blank" rel="noopener">${text} ↗</a>`
+      : `<span class="lk">${text}</span>`;
+  }
+  const pillHTML = () => (isMainnet() ? '' : '<span class="pill sandbox">sandbox</span>');
+  const linksHTML = (h, receiptName = 'receipt memo') =>
+    txItem('settlement', h.settlementTx) + txItem(receiptName, h.receiptTx) + (h.settleError ? `<span class="lk err">${esc(h.settleError)}</span>` : '');
+
+  function whyText(h) {
+    const item = terms && terms.items && terms.items[h.item];
+    if (h.status === 'waiting_for_power') return 'Device is on battery. Waiting for power to arrive…';
+    if (h.status === 'checking') return (item && item.check) || 'Running the check on the device…';
+    if (h.status === 'settle_failed') return `Check finished (${humanize(h.detail)}) but settlement failed.`;
+    const outcome = h.outcome || (h.reading && h.reading.outcome);
+    return (item && item.rules && item.rules[outcome]) || sentence(humanize(h.detail));
+  }
+  function moneyHTML(h) {
+    const line = (label, value, big) => `<div class="m-row${big ? ' big' : ''}"><span>${label}</span><b>${money(value)}</b></div>`;
+    // A failed settlement moved no money, so do not show charged or returned amounts for it.
+    if (h.status === 'interrupted') return line('unsettled', h.hold_usd);
+    if (h.charged_usd == null || h.status === 'settle_failed') return line('on hold', h.hold_usd);
+    return line('held', h.hold_usd) + line('charged', h.charged_usd, h.status === 'kept') + line('returned', h.returned_usd, h.status === 'refunded');
+  }
+  function metaHTML(h) {
+    const bits = [];
+    if (h.payer) bits.push(`agent ${esc(short(h.payer))}`);
+    if (!isPending(h) && h.detail) bits.push(`reading: ${esc(humanize(h.detail))}`);
+    if (h.reading && h.reading.signature) bits.push(`device signed ${esc(String(h.reading.signature).slice(0, 8))}`);
+    const ms = (isPending(h) ? Date.now() : h.settledAt) - h.startedAt;
+    if (ms >= 0 && ms < 600000) bits.push(isPending(h) ? `${Math.floor(ms / 1000)}s elapsed` : `hold lasted ${(ms / 1000).toFixed(1)}s`);
+    return bits.join(' · ');
+  }
+  const rowMoney = h =>
+    h.status === 'interrupted' ? humanize(h.detail)
+      : h.status === 'settle_failed' ? 'settlement failed'
+      : h.charged_usd != null ? `charged ${money(h.charged_usd)} · returned ${money(h.returned_usd)}`
+        : `${money(h.hold_usd)} on hold`;
+  const rowHTML = h => `<span class="badge">${esc(WORD[h.status] ?? humanize(h.status))}</span>
+    <span class="r-title"><b>${esc(LABEL[h.item] ?? humanize(h.item))}</b><span class="r-id">${esc(h.id)}</span></span>
+    <span class="r-money">${rowMoney(h)}</span>${pillHTML()}
+    <span class="r-links">${linksHTML(h, 'receipt')}</span>`;
+
+  function renderStats(list) {
+    const done = list.filter(h => h.status === 'kept' || h.status === 'refunded');
+    const values = {
+      's-holds': String(list.length),
+      's-kept': String(done.filter(h => h.status === 'kept').length),
+      's-refunded': String(done.filter(h => h.status === 'refunded').length),
+      's-saved': money(done.reduce((sum, h) => sum + Number(h.returned_usd || 0), 0)),
+    };
+    for (const [id, value] of Object.entries(values)) {
+      const el = $(id);
+      if (el.textContent === value) continue;
+      el.textContent = value;
+      el.toggleAttribute('data-long', value.length >= 7); // three digit dollars need a smaller step to fit the tile
+      if (ready) restart(el, 'bump', 700);
+    }
+  }
+
+  function renderHero(h, flash) {
+    const hero = $('hero');
+    hero.hidden = !h;
+    $('empty').hidden = !!h;
+    if (!h) { heroId = null; return; }
+    const fresh = heroId !== h.id;
+    const prevStatus = hero.dataset.status;
+    heroId = h.id;
+    hero.dataset.status = h.status;
+    setText($('h-item'), LABEL[h.item] ?? humanize(h.item));
+    setText($('h-id'), `hold ${h.id}`);
+    setHTML($('h-pills'), pillHTML());
+    setHTML($('h-icon'), iconFor(h.status));
+    const word = WORD[h.status] ?? humanize(h.status);
+    setText($('h-word'), word);
+    $('h-word').classList.toggle('long', word.length > 9); // INTERRUPTED and similar need a smaller size to fit
+    setText($('h-why'), whyText(h));
+    setHTML($('h-money'), moneyHTML(h));
+    setHTML($('h-meta'), metaHTML(h));
+    setHTML($('h-links'), linksHTML(h));
+    if (!ready) return;
+    if (fresh) restart(hero, 'enter');
+    if (flash === h.id && !isPending(h) && (fresh || prevStatus !== h.status)) {
+      restart(hero, 'flash');
+      restart($('h-word'), 'pop');
+      restart($('h-icon'), 'pop');
+    }
+  }
+
+  function renderList(rest, flash) {
+    const box = $('rows');
+    $('earlier').hidden = rest.length === 0;
+    const shown = rest.slice(0, MAX_ROWS);
+    const keep = new Set(shown.map(h => h.id));
+    for (const [id, el] of rows) if (!keep.has(id)) { el.remove(); rows.delete(id); }
+    shown.forEach((h, i) => {
+      let el = rows.get(h.id);
+      if (!el) {
+        el = document.createElement('article');
+        el.className = 'row';
+        rows.set(h.id, el);
+        if (ready) restart(el, 'enter', 600);
+      }
+      const prevStatus = el.dataset.status;
+      el.dataset.status = h.status;
+      setHTML(el, rowHTML(h));
+      if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
+      if (ready && flash === h.id && !isPending(h) && prevStatus && prevStatus !== h.status) restart(el, 'flash');
+    });
+    setText($('more'), rest.length > MAX_ROWS ? `+ ${rest.length - MAX_ROWS} earlier holds` : '');
+  }
+
+  function render(flash = null) {
+    const list = [...holds.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+    renderStats(list);
+    renderHero(list[0], flash);
+    renderList(list.slice(1), flash);
+  }
+
+  /* ---------- events: merge by id, detect transitions ---------- */
+  // source is 'snapshot' (initial load or resync) or 'sse' (live event).
+  // Returns the id to animate, and plays the sound, only when a hold moves into a new status
+  // that this page has watched happen. A hold first seen in a snapshot never makes a sound.
+  function ingest(h, source) {
+    if (!h || !h.id) return null;
+    const prev = holds.get(h.id);
+    const next = { ...prev, ...h };
+    if (prev && rank(next.status) < rank(prev.status)) return null; // stale update, ignore
+    holds.set(h.id, next);
+    const known = prev !== undefined;
+    const changed = !known || prev.status !== next.status;
+    const live = known || source === 'sse';
+    if (live && changed && (next.status === 'kept' || next.status === 'refunded')) playFor(next.status);
+    return live && changed ? next.id : null;
+  }
+  const apply = (h, source) => render(ingest(h, source));
+
+  /* ---------- fullscreen ---------- */
+  function toggleFullscreen() {
+    const doc = document;
+    const el = doc.documentElement;
+    try {
+      const inFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement;
+      const p = inFullscreen ? (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc) : (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+      if (p && p.catch) p.catch(() => {}); // both directions return a promise that can reject
+    } catch (e) { /* fullscreen not available here */ }
+  }
+  $('fs').addEventListener('click', toggleFullscreen);
+  addEventListener('keydown', e => {
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && String(e.key).toLowerCase() === 'f') toggleFullscreen();
+  });
+
+  /* ---------- benchmark: inline SVG bar chart + table ---------- */
+  const usd2 = v => (typeof v === 'number' ? '$' + v.toFixed(2) : 'n/a');
+  const pct = v => (typeof v === 'number' ? `${Number.isInteger(v) ? v : v.toFixed(1)}%` : 'n/a');
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text) {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text !== undefined) n.textContent = text; // labels come from data, never parsed as markup
+    return n;
+  }
+  // Bar with a 4 unit rounded data end and a square baseline end.
+  function barPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    return `M${x} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x}Z`;
+  }
+  function tooltip(r) {
+    const decisions = r.decisions ? Object.entries(r.decisions).map(([k, v]) => `${v} ${k}`).join(', ') : '';
+    return `${r.label}: wasted ${usd2(r.wasted_usd)} across ${r.scenarios} scenarios. Needs met ${pct(r.needs_met_pct)}, total spend ${usd2(r.total_spend_usd)}, model cost ${usd2(r.model_cost_usd)}.`
+      + (decisions ? ` Decisions: ${decisions}.` : '') + (r.model ? ` Model: ${r.model}.` : '');
+  }
+  function drawChart(runs) {
+    const W = 960, LEFT = 330, PLOT = 500, ROW = 80, BAR = 24, PAD = 12;
+    const H = PAD * 2 + runs.length * ROW;
+    const max = Math.max(...runs.map(r => r.wasted_usd), 0.01);
+    const svg = svgEl('svg', {
+      viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img',
+      'aria-label': 'Wasted spend per run, lower is better. ' + runs.map(r => `${r.label}: ${usd2(r.wasted_usd)}`).join('. '),
+    });
+    svg.append(svgEl('line', { x1: LEFT, x2: LEFT, y1: PAD, y2: H - PAD, class: 'axis' }));
+    runs.forEach((r, i) => {
+      const y = PAD + i * ROW;
+      const cy = y + ROW / 2;
+      const w = r.wasted_usd > 0 ? Math.max(3, (r.wasted_usd / max) * PLOT) : 0;
+      const g = svgEl('g', { class: r.desk ? 'bar hl' : 'bar' });
+      g.append(svgEl('title', {}, tooltip(r)));
+      g.append(svgEl('rect', { x: 0, y, width: W, height: ROW, class: 'hit' }));
+      g.append(svgEl('text', { x: LEFT - 18, y: cy, dy: '.35em', 'text-anchor': 'end', 'font-size': 23, class: 'cat' }, r.label));
+      if (w > 0) g.append(svgEl('path', { d: barPath(LEFT, cy - BAR / 2, w, BAR, 4), class: 'mark' }));
+      g.append(svgEl('text', { x: LEFT + w + 14, y: cy, dy: '.35em', 'font-size': 28, class: 'val' }, usd2(r.wasted_usd)));
+      svg.append(g);
+    });
+    return svg;
+  }
+  // A label that does not fit is shrunk to fit, never clipped.
+  function fitLabels(svg) {
+    svg.querySelectorAll('text.cat').forEach(t => {
+      const room = Number(t.getAttribute('x')) - 8;
+      const width = t.getBBox().width;
+      if (width > room) t.setAttribute('font-size', (Number(t.getAttribute('font-size')) * room / width).toFixed(1));
+    });
+  }
+  function drawBench(data) {
+    const runs = data && Array.isArray(data.runs) ? data.runs.filter(r => r && typeof r.wasted_usd === 'number') : [];
+    if (!runs.length) return;
+    $('bench').hidden = false;
+    $('bench-link').hidden = false;
+    const desk = runs.find(r => r.desk);
+    const worst = runs.filter(r => !r.desk).sort((a, b) => b.wasted_usd - a.wasted_usd)[0];
+    setText($('bench-take'), desk && worst ? `${desk.label} wasted ${usd2(desk.wasted_usd)}. ${worst.label} wasted ${usd2(worst.wasted_usd)}.` : '');
+    $('bench-take').hidden = !(desk && worst);
+    setText($('bench-sub'), `Money wasted on purchases the user did not need${runs[0].scenarios ? `, ${runs[0].scenarios} scenarios` : ''}. Lower is better.`);
+    const svg = drawChart(runs);
+    $('bench-chart').replaceChildren(svg);
+    fitLabels(svg);
+    setText($('bench-note'), data.note || '');
+    $('bench-note').hidden = !data.note;
+    $('bench-rows').innerHTML = runs.map(r => `<tr class="${r.desk ? 'hl' : ''}"><th scope="row">${esc(r.label)}</th><td>${pct(r.needs_met_pct)}</td><td>${esc(r.missed_needs)}${r.real_needs != null ? ` <small>of ${esc(r.real_needs)}</small>` : ''}</td><td>${usd2(r.total_spend_usd)}</td><td>${usd2(r.model_cost_usd)}</td></tr>`).join('');
+    const when = data.ranAt ? new Date(data.ranAt) : null;
+    setText($('bench-meta'), when && !isNaN(when) ? `Run at ${when.toISOString().slice(0, 16).replace('T', ' ')} UTC` : '');
+  }
+
+  /* ---------- wiring: GET /v1/terms, /v1/holds, /v1/events, /v1/bench ---------- */
+  const getJSON = url => fetch(url).then(r => { if (!r.ok) throw new Error(`${url} ${r.status}`); return r.json(); });
+  function applyTerms(t) {
+    terms = t;
+    network = t.network || network;
+    setText($('net'), `solana ${network} · device ${String(t.devicePublicKey || '').slice(0, 8)}`);
+  }
+  function setLive(ok) {
+    $('dot').className = 'dot ' + (ok ? 'on' : 'warn');
+    $('dot').title = ok ? 'live' : 'reconnecting';
+  }
+  // After a dropped connection, catch up on anything missed. Holds that changed while we were
+  // away still count as transitions; holds never seen before are added quietly.
+  function resync() {
+    if (!terms) getJSON('/v1/terms').then(applyTerms).then(() => render()).catch(() => {});
+    getJSON('/v1/holds').then(d => {
+      let flash = null;
+      (d.holds || []).forEach(h => { flash = ingest(h, 'snapshot') ?? flash; });
+      render(flash);
+    }).catch(() => {});
+  }
+
+  const queued = []; // live events that arrive before the first snapshot is applied
+  let sseDown = false;
   const es = new EventSource('/v1/events');
-  es.onmessage = e => { const h = JSON.parse(e.data); holds.set(h.id, { ...holds.get(h.id), ...h }); render(); };
+  es.onopen = () => { setLive(true); if (sseDown) { sseDown = false; resync(); } };
+  es.onerror = () => { sseDown = true; setLive(false); };
+  es.onmessage = e => {
+    let h;
+    try { h = JSON.parse(e.data); } catch (err) { return; }
+    if (ready) apply(h, 'sse'); else queued.push(h);
+  };
+
+  Promise.allSettled([getJSON('/v1/terms'), getJSON('/v1/holds')]).then(([t, l]) => {
+    if (t.status === 'fulfilled') applyTerms(t.value); else setText($('net'), 'desk offline');
+    if (l.status === 'fulfilled') (l.value.holds || []).forEach(h => ingest(h, 'snapshot'));
+    render();
+    ready = true;
+    queued.splice(0).forEach(h => apply(h, 'sse'));
+  });
+  // Keep the elapsed timer on a pending hold ticking.
+  setInterval(() => {
+    const h = holds.get(heroId);
+    if (h && isPending(h)) setHTML($('h-meta'), metaHTML(h));
+  }, 1000);
+  // Hidden unless the desk serves benchmark results. A 404 leaves the section hidden.
+  getJSON('/v1/bench').then(drawBench).catch(() => {});
 </script>
 </body>
 </html>

@@ -124,9 +124,10 @@
                       "type": "string",
                       "enum": [
                         "kept",
-                        "refunded"
+                        "refunded",
+                        "settle_failed"
                       ],
-                      "description": "kept when the rental is delivered, refunded otherwise."
+                      "description": "kept or refunded once settled; settle_failed when the settlement transaction failed, in which case no money moved and settle_error says why."
                     },
                     "charged_usd": {
                       "type": "string",
@@ -182,6 +183,10 @@
                     "network": {
                       "type": "string",
                       "description": "Network the hold settled on: localnet in the Pay.sh sandbox, mainnet when live."
+                    },
+                    "settle_error": {
+                      "type": "string",
+                      "description": "Present only when decision is settle_failed."
                     }
                   }
                 }
@@ -253,9 +258,10 @@
                       "type": "string",
                       "enum": [
                         "kept",
-                        "refunded"
+                        "refunded",
+                        "settle_failed"
                       ],
-                      "description": "kept when the rental is delivered, refunded otherwise."
+                      "description": "kept or refunded once settled; settle_failed when the settlement transaction failed, in which case no money moved and settle_error says why."
                     },
                     "charged_usd": {
                       "type": "string",
@@ -311,6 +317,10 @@
                     "network": {
                       "type": "string",
                       "description": "Network the hold settled on: localnet in the Pay.sh sandbox, mainnet when live."
+                    },
+                    "settle_error": {
+                      "type": "string",
+                      "description": "Present only when decision is settle_failed."
                     }
                   }
                 }

@@ -261,9 +261,11 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     hold_id: hold.id,
     item,
     outcome: reading.outcome,
-    decision: keep ? 'kept' : 'refunded',
+    // A failed settle moved no money yet: say so instead of reporting the intended split as done.
+    decision: settleError ? 'settle_failed' : keep ? 'kept' : 'refunded',
     charged_usd: charged,
     returned_usd: returned,
+    settle_error: settleError,
     reason: ITEMS[item].rules[reading.outcome] ?? reading.detail,
     signed_reading: reading,
     settlement_tx: settled.settlementTx,
