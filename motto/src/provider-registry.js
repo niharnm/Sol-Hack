@@ -93,6 +93,7 @@ function fulfillmentUrl(value, allowLocal) {
 }
 
 function usd(value, name, { positive = false } = {}) {
+  if (typeof value !== 'string') fail(`invalid_${name}`, `${name} must be a USD string`);
   let amount;
   try {
     amount = toBaseUnits(value);

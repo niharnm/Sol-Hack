@@ -89,6 +89,7 @@ test('validates payout addresses, keys, offer ceilings, deadlines and attestor r
     ['invalid_payout_address', config => { config.providers[0].payout_address = 'not-solana'; }],
     ['invalid_quote_public_key', config => { config.providers[0].quote_public_key = 'abcd'; }],
     ['invalid_max_hold_usd', config => { config.providers[0].offers[0].max_hold_usd = '1.0000001'; }],
+    ['invalid_max_hold_usd', config => { config.providers[0].offers[0].max_hold_usd = 1; }],
     ['invalid_max_hold_usd', config => { config.providers[0].offers[0].max_hold_usd = '0.00'; }],
     ['invalid_fulfillment_timeout', config => { config.providers[0].offers[0].fulfillment_timeout_seconds = 0; }],
     ['invalid_fulfillment_timeout', config => { config.providers[0].offers[0].fulfillment_timeout_seconds = 181; }],
