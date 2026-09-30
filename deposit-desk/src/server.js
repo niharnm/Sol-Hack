@@ -272,13 +272,14 @@ app.post('/v1/rent/:item', async (req, res, next) => {
 });
 
 // OpenAPI with payment offers, used by `pay gate --openapi` and the pay-skills catalog.
+// Summaries stay under the registry's 63 character cap (they show in the OS payment prompt).
 app.get('/openapi.json', async (_req, res, next) => {
   try {
     res.json(
       await pay.openapi(
         [
-          { method: 'POST', path: '/v1/rent/charger', gate: 'charger', summary: 'Hold $1 for a charger; refunded minus $0.01 if the device already has power.' },
-          { method: 'POST', path: '/v1/rent/hotspot', gate: 'hotspot', summary: 'Hold $1 for a hotspot; refunded minus $0.01 if the device is already on the venue network.' },
+          { method: 'POST', path: '/v1/rent/charger', gate: 'charger', summary: 'Start a charger rental with a refundable $1 hold' },
+          { method: 'POST', path: '/v1/rent/hotspot', gate: 'hotspot', summary: 'Start a hotspot rental with a refundable $1 hold' },
         ],
         { info: { title: 'Deposit Desk', version: '1.0.0', description: 'Refundable holds for agents renting real-world things.' } },
       ),
