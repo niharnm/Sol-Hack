@@ -2,6 +2,12 @@
 
 The story is a purchasing agent with a task and a budget. The charger is a visible service-delivery check. The job is an illustrative scenario: this demo does not launch or supervise a real background job.
 
+## Two-person setup
+
+Run the buyer on the partner's computer that already has Claude Code access. A login on that computer does not sign in the other laptop. The simplest setup is to run Motto and the buyer on that same computer, share its dashboard, and plug/unplug its charger. This local launcher targets localhost; it will not control the other person's desk.
+
+The repository also includes the general scenario buyer in `motto/buyer/buy.js`. On the partner's configured machine, `cd motto` then `npm run buyer -- --scenario low-battery` lets the agent select a service from the terms and checks its report against the hold log. Other supported scenarios are listed by `npm run buyer -- --list`. Use only verified service checks in the stage demo.
+
 ## Before the pitch
 
 - Open http://127.0.0.1:8787 beside a terminal in the Sol-Hack repository folder. Click Sound on.
