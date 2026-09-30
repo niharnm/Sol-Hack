@@ -51,6 +51,7 @@ async function start({ providerFailure, settlementFailure } = {}) {
   const orders = new OrderStore({ dataDir: root, capabilitySecret: 's'.repeat(32) });
   let charged = 0n;
   let gate;
+  let quoteCalls = 0;
   const pay = {
     config: { operator: { recipient: quote().payout_address } },
     async requirePayment(_request, receivedGate) {
@@ -72,8 +73,16 @@ async function start({ providerFailure, settlementFailure } = {}) {
   };
   const registry = {
     publicProviders: () => [{ id: 'paper-shop', payout_address: quote().payout_address, offers: [{ id: 'research-pack' }] }],
+    getOffer(providerId, offerId) {
+      assert.deepEqual([providerId, offerId], ['paper-shop', 'research-pack']);
+      return { id: offerId };
+    },
   };
   const providerClient = {
+    async quote() {
+      quoteCalls++;
+      return { signed_quote: { quote: quote(), signature: 'signed' } };
+    },
     async fulfill(order) {
       if (providerFailure) throw Object.assign(new Error('provider failed'), { code: 'provider_failed' });
       return {
@@ -93,15 +102,14 @@ async function start({ providerFailure, settlementFailure } = {}) {
   const port = await freePort();
   const server = app.listen(port, '127.0.0.1');
   servers.push(server);
-  return { base: `http://127.0.0.1:${port}`, charged: () => charged, gate: () => gate };
+  return { base: `http://127.0.0.1:${port}`, charged: () => charged, gate: () => gate, quoteCalls: () => quoteCalls };
 }
 
 async function createOrder(base, key) {
-  const signedQuote = { quote: quote(), signature: 'signed' };
   const response = await fetch(`${base}/v1/orders`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'idempotency-key': key },
-    body: JSON.stringify({ signed_quote: signedQuote, request: { query: 'battery recycling' } }),
+    body: JSON.stringify({ provider_id: 'paper-shop', offer_id: 'research-pack', request: { query: 'battery recycling' } }),
   });
   assert.equal(response.status, 201);
   return response.json();
@@ -118,6 +126,14 @@ test('creates a private order and advertises an upto hold paid directly to the p
   assert.equal((await denied.json()).accepts[0].payTo, quote().payout_address);
   assert.equal(service.gate().payTo, quote().payout_address);
   assert.equal(service.gate().amount.baseUnits(), 1000000n);
+  const replay = await fetch(`${service.base}/v1/orders`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'idempotency-key': 'api-request-0001' },
+    body: JSON.stringify({ provider_id: 'paper-shop', offer_id: 'research-pack', request: { query: 'battery recycling' } }),
+  });
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).order.id, created.order.id);
+  assert.equal(service.quoteCalls(), 1);
 });
 
 test('verifies provider evidence before charging and records a settled order', async () => {

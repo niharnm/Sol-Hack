@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,7 @@ import { quoteSigningPayload, sha256Hex } from '../src/provider-protocol.js';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'desk-server-'));
 const children = [];
+const httpServers = [];
 let desk;
 
 // Real keys and mainnet settings from the caller's shell never reach the test servers.
@@ -82,6 +84,7 @@ before(async () => {
 
 after(() => {
   for (const child of children) child.kill();
+  for (const server of httpServers) server.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -150,6 +153,37 @@ test('configured provider orders issue a real upto offer paid directly to the pr
   const attestorKeys = generateKeyPairSync('ed25519');
   const publicHex = key => key.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex');
   const payout = bs58.encode(randomBytes(32));
+  const providerToken = 'test-provider-token-with-enough-bytes';
+  const providerCalls = [];
+  const providerServer = createHttpServer((requestMessage, response) => {
+    const chunks = [];
+    requestMessage.on('data', chunk => chunks.push(chunk));
+    requestMessage.on('end', () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      providerCalls.push({ body, authorization: requestMessage.headers.authorization });
+      const quote = {
+        version: 1,
+        quote_id: `quote_${randomBytes(8).toString('hex')}`,
+        provider_id: 'paper-shop',
+        offer_id: 'research-pack',
+        network: 'localnet',
+        payout_address: payout,
+        hold_usd: '1.25',
+        settlement: { delivered_usd: '1.25', already_handled_usd: '0.10', not_delivered_usd: '0.00', inconclusive_usd: '0.00' },
+        request_sha256: sha256Hex(body.request),
+        attestor_id: 'delivery-service',
+        nonce: randomBytes(18).toString('base64url'),
+        expires_at_ms: Date.now() + 60_000,
+        fulfillment_timeout_seconds: 30,
+      };
+      const signedQuote = { quote, signature: sign(null, Buffer.from(quoteSigningPayload(quote)), quoteKeys.privateKey).toString('base64url') };
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ signed_quote: signedQuote }));
+    });
+  });
+  await new Promise(resolve => providerServer.listen(0, '127.0.0.1', resolve));
+  httpServers.push(providerServer);
+  const providerPort = providerServer.address().port;
   const providersFile = join(dir, 'providers.json');
   writeFileSync(providersFile, JSON.stringify({
     version: 1,
@@ -158,7 +192,7 @@ test('configured provider orders issue a real upto offer paid directly to the pr
       name: 'Paper Shop',
       payout_address: payout,
       quote_public_key: publicHex(quoteKeys.publicKey),
-      fulfillment_url: 'https://merchant.example/motto/fulfill',
+      fulfillment_url: `http://127.0.0.1:${providerPort}/motto`,
       attestors: [{ id: 'delivery-service', public_key: publicHex(attestorKeys.publicKey) }],
       offers: [{
         id: 'research-pack', summary: 'Buy a signed research pack', network: 'localnet', max_hold_usd: '2.00',
@@ -166,30 +200,21 @@ test('configured provider orders issue a real upto offer paid directly to the pr
       }],
     }],
   }));
-  const configured = await startDesk({ MOTTO_PROVIDERS_FILE: providersFile });
+  const configured = await startDesk({
+    MOTTO_PROVIDERS_FILE: providersFile,
+    MOTTO_ALLOW_LOCAL_PROVIDERS: 'true',
+    MOTTO_PROVIDER_TOKEN_PAPER_SHOP: providerToken,
+  });
   const request = { query: 'battery recycling' };
-  const quote = {
-    version: 1,
-    quote_id: `quote_${randomBytes(8).toString('hex')}`,
-    provider_id: 'paper-shop',
-    offer_id: 'research-pack',
-    network: 'localnet',
-    payout_address: payout,
-    hold_usd: '1.25',
-    settlement: { delivered_usd: '1.25', already_handled_usd: '0.10', not_delivered_usd: '0.00', inconclusive_usd: '0.00' },
-    request_sha256: sha256Hex(request),
-    attestor_id: 'delivery-service',
-    nonce: randomBytes(18).toString('base64url'),
-    expires_at_ms: Date.now() + 60_000,
-    fulfillment_timeout_seconds: 30,
-  };
-  const signedQuote = { quote, signature: sign(null, Buffer.from(quoteSigningPayload(quote)), quoteKeys.privateKey).toString('base64url') };
   const createdResponse = await fetch(`${configured.base}/v1/orders`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'idempotency-key': `test-${randomBytes(12).toString('hex')}` },
-    body: JSON.stringify({ signed_quote: signedQuote, request }),
+    body: JSON.stringify({ provider_id: 'paper-shop', offer_id: 'research-pack', request }),
   });
   assert.equal(createdResponse.status, 201);
+  assert.equal(providerCalls.length, 1);
+  assert.equal(providerCalls[0].body.action, 'quote');
+  assert.equal(providerCalls[0].authorization, `Bearer ${providerToken}`);
   const created = await createdResponse.json();
   const denied = await fetch(`${configured.base}${created.execute_path}`, {
     method: 'POST', headers: { 'x-motto-order-token': created.order_token },

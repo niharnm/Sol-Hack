@@ -57,10 +57,10 @@ async function readBounded(response, limit = MAX_RESPONSE_BYTES) {
   return Buffer.concat(chunks, size).toString('utf8');
 }
 
-function responseObject(value) {
+function responseObject(value, fields) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(502, 'invalid_provider_response');
   const keys = Object.keys(value);
-  if (!keys.includes('artifact') || !keys.includes('signed_attestation') || keys.some(key => !['artifact', 'signed_attestation'].includes(key))) {
+  if (fields.some(key => !keys.includes(key)) || keys.some(key => !fields.includes(key))) {
     fail(502, 'invalid_provider_response');
   }
   return value;
@@ -99,14 +99,58 @@ export class ProviderClient {
     }
   }
 
-  async fulfill(order) {
-    const provider = this.registry.getProvider(order.provider_id);
+  async post(provider, payload, { idempotencyKey, timeoutMs }) {
     const url = new URL(provider.fulfillment_url);
     await this.assertAddressAllowed(url);
     const token = this.tokenFor(provider.id);
     if (typeof token !== 'string' || !TOKEN.test(token)) fail(503, 'provider_auth_not_configured');
+    let response;
+    try {
+      response = await this.fetcher(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          'idempotency-key': idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+        redirect: 'error',
+        signal: AbortSignal.timeout(Math.max(1, timeoutMs)),
+      });
+    } catch (error) {
+      fail(502, 'provider_unavailable', String(error?.message ?? error));
+    }
+    if (!response.ok) fail(502, 'provider_rejected', `provider returned HTTP ${response.status}`);
+    if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) fail(502, 'invalid_provider_content_type');
+    const raw = await readBounded(response, this.responseLimit);
+    try {
+      const value = JSON.parse(raw);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) fail(502, 'invalid_provider_response');
+      return value;
+    } catch (error) {
+      if (error instanceof ProviderClientError) throw error;
+      fail(502, 'invalid_provider_response');
+    }
+  }
+
+  async quote({ providerId, offerId, request, network, idempotencyKey }) {
+    const provider = this.registry.getProvider(providerId);
+    const response = await this.post(provider, {
+      version: 1,
+      action: 'quote',
+      provider_id: providerId,
+      offer_id: offerId,
+      network,
+      request,
+    }, { idempotencyKey, timeoutMs: 10_000 });
+    return responseObject(response, ['signed_quote']);
+  }
+
+  async fulfill(order) {
+    const provider = this.registry.getProvider(order.provider_id);
     const payload = {
       version: 1,
+      action: 'fulfill',
       order: {
         id: order.id,
         hold_id: order.hold_id,
@@ -118,31 +162,11 @@ export class ProviderClient {
       signed_quote: order.signed_quote,
       request: order.request,
     };
-    let response;
-    try {
-      response = await this.fetcher(url, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token}`,
-          'content-type': 'application/json',
-          'idempotency-key': order.id,
-        },
-        body: JSON.stringify(payload),
-        redirect: 'error',
-        signal: AbortSignal.timeout(Math.max(1, order.fulfillment_deadline_ms - Date.now())),
-      });
-    } catch (error) {
-      fail(502, 'provider_unavailable', String(error?.message ?? error));
-    }
-    if (!response.ok) fail(502, 'provider_rejected', `provider returned HTTP ${response.status}`);
-    if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) fail(502, 'invalid_provider_content_type');
-    const raw = await readBounded(response, this.responseLimit);
-    try {
-      return responseObject(JSON.parse(raw));
-    } catch (error) {
-      if (error instanceof ProviderClientError) throw error;
-      fail(502, 'invalid_provider_response');
-    }
+    const response = await this.post(provider, payload, {
+      idempotencyKey: order.id,
+      timeoutMs: order.fulfillment_deadline_ms - Date.now(),
+    });
+    return responseObject(response, ['artifact', 'signed_attestation']);
   }
 }
 

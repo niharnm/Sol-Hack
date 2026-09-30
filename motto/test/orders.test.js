@@ -49,7 +49,9 @@ test('creates private orders and returns the same response for an exact idempote
   const orders = store();
   const input = { signedQuote: signedQuote(), quoteFingerprint: 'b'.repeat(64), request: { query: 'battery recycling' }, idempotencyKey: 'request-0001' };
   const first = orders.create(input);
+  const preflight = orders.replay({ idempotencyKey: input.idempotencyKey, creation: { signed_quote: input.signedQuote, request: input.request } });
   const retry = orders.create(input);
+  assert.equal(preflight.order.id, first.order.id);
   assert.equal(first.order.id, retry.order.id);
   assert.equal(first.capability, retry.capability);
   assert.equal(first.replayed, false);

@@ -23,9 +23,11 @@ function asyncRoute(handler) {
 function exactOrderBody(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(400, 'invalid_order_request');
   const keys = Object.keys(value);
-  if (!keys.includes('signed_quote') || !keys.includes('request') || keys.some(key => !['signed_quote', 'request'].includes(key))) {
+  const fields = ['provider_id', 'offer_id', 'request'];
+  if (fields.some(key => !keys.includes(key)) || keys.some(key => !fields.includes(key))) {
     fail(400, 'invalid_order_request');
   }
+  if (typeof value.provider_id !== 'string' || typeof value.offer_id !== 'string') fail(400, 'invalid_order_request');
   return value;
 }
 
@@ -109,6 +111,15 @@ function paymentSummary(order) {
   };
 }
 
+function sendCreatedOrder(res, created) {
+  res.status(created.replayed ? 200 : 201).json({
+    order: created.order,
+    order_token: created.capability,
+    execute_path: `/v1/orders/${created.order.id}/execute`,
+    replayed: created.replayed,
+  });
+}
+
 export function mountProviderApi({
   app,
   pay,
@@ -129,25 +140,33 @@ export function mountProviderApi({
 
   app.post('/v1/orders', asyncRoute(async (req, res) => {
     const body = exactOrderBody(req.body);
-    const verified = verifyQuote(body.signed_quote, {
+    const idempotencyKey = req.get('idempotency-key');
+    const replay = orders.replay({ idempotencyKey, creation: body });
+    if (replay) return sendCreatedOrder(res, replay);
+    registry.getOffer(body.provider_id, body.offer_id);
+    const quoted = await providerClient.quote({
+      providerId: body.provider_id,
+      offerId: body.offer_id,
+      request: body.request,
+      network,
+      idempotencyKey,
+    });
+    const verified = verifyQuote(quoted.signed_quote, {
       registry,
       request: body.request,
       network,
       replayGuard,
       consumeReplay: true,
     });
+    if (verified.quote.provider_id !== body.provider_id || verified.quote.offer_id !== body.offer_id) fail(502, 'provider_quote_mismatch');
     const created = orders.create({
-      signedQuote: body.signed_quote,
+      signedQuote: quoted.signed_quote,
       quoteFingerprint: verified.fingerprint,
       request: body.request,
-      idempotencyKey: req.get('idempotency-key'),
+      idempotencyKey,
+      creation: body,
     });
-    res.status(created.replayed ? 200 : 201).json({
-      order: created.order,
-      order_token: created.capability,
-      execute_path: `/v1/orders/${created.order.id}/execute`,
-      replayed: created.replayed,
-    });
+    return sendCreatedOrder(res, created);
   }));
 
   app.get('/v1/orders/:id', (req, res, next) => {

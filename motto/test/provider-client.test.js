@@ -43,8 +43,28 @@ test('sends a bounded authenticated fulfillment request with the order binding',
   assert.equal(seen.init.headers['idempotency-key'], order.id);
   assert.equal(seen.init.redirect, 'error');
   assert.equal(seen.body.order.hold_id, order.hold_id);
+  assert.equal(seen.body.action, 'fulfill');
   assert.deepEqual(seen.body.request, order.request);
   assert.equal(result.artifact.delivered, true);
+});
+
+test('requests a provider-signed quote before any payment challenge', async () => {
+  let seen;
+  const signedQuote = { quote: { quote_id: 'quote_01' }, signature: 'signed' };
+  const result = await client({ fetcher: async (_url, init) => {
+    seen = { headers: init.headers, body: JSON.parse(init.body) };
+    return new Response(JSON.stringify({ signed_quote: signedQuote }), { headers: { 'content-type': 'application/json' } });
+  } }).quote({
+    providerId: 'paper-shop',
+    offerId: 'research-pack',
+    request: { query: 'battery recycling' },
+    network: 'devnet',
+    idempotencyKey: 'quote-request-0001',
+  });
+  assert.equal(seen.body.action, 'quote');
+  assert.equal(seen.body.offer_id, 'research-pack');
+  assert.equal(seen.headers['idempotency-key'], 'quote-request-0001');
+  assert.deepEqual(result.signed_quote, signedQuote);
 });
 
 test('blocks private DNS answers and permits explicit loopback test providers', async () => {

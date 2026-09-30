@@ -35,6 +35,13 @@ function withoutSecrets(order) {
   return structuredClone(visible);
 }
 
+function idempotencyHash(key) {
+  if (typeof key !== 'string' || !IDEMPOTENCY_KEY.test(key)) {
+    fail(400, 'invalid_idempotency_key', 'Idempotency-Key must be 8 to 256 visible ASCII characters');
+  }
+  return hash(key);
+}
+
 export class OrderStore {
   constructor({ dataDir = 'data', capabilitySecret, now = Date.now, uuid = randomUUID } = {}) {
     if (typeof now !== 'function' || typeof uuid !== 'function') fail(500, 'invalid_order_store');
@@ -84,17 +91,20 @@ export class OrderStore {
     return `motto_${createHmac('sha256', this.capabilitySecret).update(orderId).digest('base64url')}`;
   }
 
-  create({ signedQuote, quoteFingerprint, request, idempotencyKey }) {
-    if (typeof idempotencyKey !== 'string' || !IDEMPOTENCY_KEY.test(idempotencyKey)) {
-      fail(400, 'invalid_idempotency_key', 'Idempotency-Key must be 8 to 256 visible ASCII characters');
-    }
-    const idempotencySha256 = hash(idempotencyKey);
-    const creationSha256 = sha256Hex({ signed_quote: signedQuote, request });
+  replay({ idempotencyKey, creation }) {
+    const idempotencySha256 = idempotencyHash(idempotencyKey);
+    const creationSha256 = sha256Hex(creation);
     const prior = this.orders.find(order => order.idempotency_sha256 === idempotencySha256);
-    if (prior) {
-      if (prior.creation_sha256 !== creationSha256) fail(409, 'idempotency_conflict', 'Idempotency-Key was used with different order data');
-      return { order: withoutSecrets(prior), capability: this.capabilityFor(prior.id), replayed: true };
-    }
+    if (!prior) return null;
+    if (prior.creation_sha256 !== creationSha256) fail(409, 'idempotency_conflict', 'Idempotency-Key was used with different order data');
+    return { order: withoutSecrets(prior), capability: this.capabilityFor(prior.id), replayed: true };
+  }
+
+  create({ signedQuote, quoteFingerprint, request, idempotencyKey, creation = { signed_quote: signedQuote, request } }) {
+    const replay = this.replay({ idempotencyKey, creation });
+    if (replay) return replay;
+    const idempotencySha256 = idempotencyHash(idempotencyKey);
+    const creationSha256 = sha256Hex(creation);
     if (this.orders.some(order => order.quote_fingerprint === quoteFingerprint)) {
       fail(409, 'quote_already_used', 'signed quote already belongs to another order');
     }
