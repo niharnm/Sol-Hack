@@ -4,7 +4,7 @@
 // the rest goes back to the agent.
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
 import { checkCharger, checkHotspot, devicePublicKey } from './checks.js';
 import { postReceipt } from './receipt.js';
@@ -110,6 +110,16 @@ app.get('/v1/terms', (_req, res) => {
 });
 
 app.get('/v1/holds', (_req, res) => res.json({ holds }));
+
+// Benchmark summary for the dashboard chart (full per-scenario data stays in bench/results.json).
+app.get('/v1/bench', (_req, res) => {
+  try {
+    const { ranAt, note, runs } = JSON.parse(readFileSync('bench/results.json', 'utf8'));
+    res.json({ ranAt, note, runs: runs.map(({ results, ...summary }) => summary) });
+  } catch {
+    res.status(404).json({ error: 'no benchmark results yet; run `npm run bench`' });
+  }
+});
 
 app.get('/v1/events', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });

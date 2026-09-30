@@ -1,0 +1,536 @@
+{
+  "seed": 20260930,
+  "n": 50,
+  "scenarios": [
+    {
+      "id": "s01",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "User usually works at a desk with a charger.",
+        "User mentioned bringing a power bank this morning.",
+        "User is in a lecture hall with few outlets."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s02",
+      "item": "hotspot",
+      "request": "My laptop has to stay online for a deploy. Sort out connectivity if needed.",
+      "context": [
+        "Last network sync showed the laptop on a phone tether.",
+        "User said \"wifi here is terrible\" this morning."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s03",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "Last battery sync 50 minutes ago showed 71%.",
+        "User mentioned bringing a power bank this morning.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s04",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "Venue advertises fast wifi for all attendees.",
+        "User complained the venue wifi was dropping an hour ago."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s05",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "Last battery sync 50 minutes ago showed 71%.",
+        "User mentioned bringing a power bank this morning."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s06",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "User complained the venue wifi was dropping an hour ago.",
+        "User joined the venue wifi at check-in two hours ago."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s07",
+      "item": "charger",
+      "request": "My phone is my ticket for tonight. Do not let it run out.",
+      "context": [
+        "Last battery sync 50 minutes ago showed 71%.",
+        "Venue lists outlets at every seat."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s08",
+      "item": "hotspot",
+      "request": "I need to be online for the demo in an hour.",
+      "context": [
+        "User joined the venue wifi at check-in two hours ago.",
+        "User finished a large upload without complaint earlier.",
+        "Venue wifi requires a login page the user may not have completed."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s09",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "User usually works at a desk with a charger.",
+        "User said \"plugging in now\" 30 minutes ago, no confirmation since.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s10",
+      "item": "hotspot",
+      "request": "I need to be online for the demo in an hour.",
+      "context": [
+        "Venue advertises fast wifi for all attendees.",
+        "User joined the venue wifi at check-in two hours ago."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s11",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "Venue lists outlets at every seat.",
+        "User mentioned bringing a power bank this morning.",
+        "User usually works at a desk with a charger."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s12",
+      "item": "hotspot",
+      "request": "Keep my laptop connected for the upload this afternoon.",
+      "context": [
+        "User finished a large upload without complaint earlier.",
+        "Venue advertises fast wifi for all attendees."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s13",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "Last battery sync 45 minutes ago showed 14%.",
+        "User texted \"almost dead\" an hour ago.",
+        "Device reported \"low power mode on\" at the last sync."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s14",
+      "item": "hotspot",
+      "request": "Keep my laptop connected for the upload this afternoon.",
+      "context": [
+        "Venue wifi requires a login page the user may not have completed.",
+        "User said \"wifi here is terrible\" this morning."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s15",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "Calendar shows back-to-back meetings away from the desk.",
+        "User mentioned bringing a power bank this morning.",
+        "User said \"plugging in now\" 30 minutes ago, no confirmation since."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s16",
+      "item": "hotspot",
+      "request": "My laptop has to stay online for a deploy. Sort out connectivity if needed.",
+      "context": [
+        "User said \"wifi here is terrible\" this morning.",
+        "Venue advertises fast wifi for all attendees.",
+        "Last network sync 40 minutes ago showed the venue network."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s17",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "User texted \"almost dead\" an hour ago.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s18",
+      "item": "hotspot",
+      "request": "Keep my laptop connected for the upload this afternoon.",
+      "context": [
+        "Venue wifi requires a login page the user may not have completed.",
+        "User said \"wifi here is terrible\" this morning.",
+        "Last network sync 40 minutes ago showed the venue network."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s19",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "Calendar shows back-to-back meetings away from the desk.",
+        "Device reported \"low power mode on\" at the last sync.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s20",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "Venue wifi requires a login page the user may not have completed.",
+        "User complained the venue wifi was dropping an hour ago."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s21",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "User is in a lecture hall with few outlets.",
+        "Calendar shows back-to-back meetings away from the desk.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s22",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "Venue advertises fast wifi for all attendees.",
+        "User said \"wifi here is terrible\" this morning.",
+        "Last network sync showed the laptop on a phone tether."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s23",
+      "item": "charger",
+      "request": "My laptop has a long export running. Make sure it does not die.",
+      "context": [
+        "User is in a lecture hall with few outlets.",
+        "Venue lists outlets at every seat.",
+        "Calendar shows back-to-back meetings away from the desk."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s24",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "Last network sync 40 minutes ago showed the venue network.",
+        "Venue wifi requires a login page the user may not have completed."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s25",
+      "item": "charger",
+      "request": "My laptop has a long export running. Make sure it does not die.",
+      "context": [
+        "Last battery sync 45 minutes ago showed 14%.",
+        "User mentioned bringing a power bank this morning.",
+        "User usually works at a desk with a charger."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s26",
+      "item": "hotspot",
+      "request": "I need to be online for the demo in an hour.",
+      "context": [
+        "User complained the venue wifi was dropping an hour ago.",
+        "User said \"wifi here is terrible\" this morning.",
+        "Venue advertises fast wifi for all attendees."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s27",
+      "item": "charger",
+      "request": "My phone is my ticket for tonight. Do not let it run out.",
+      "context": [
+        "User is in a lecture hall with few outlets.",
+        "User mentioned bringing a power bank this morning."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s28",
+      "item": "hotspot",
+      "request": "My laptop has to stay online for a deploy. Sort out connectivity if needed.",
+      "context": [
+        "Last network sync showed the laptop on a phone tether.",
+        "User said \"wifi here is terrible\" this morning.",
+        "Venue wifi requires a login page the user may not have completed."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s29",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "User is in a lecture hall with few outlets.",
+        "Last battery sync 50 minutes ago showed 71%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s30",
+      "item": "hotspot",
+      "request": "I need to be online for the demo in an hour.",
+      "context": [
+        "Last network sync 40 minutes ago showed the venue network.",
+        "Venue advertises fast wifi for all attendees.",
+        "User joined the venue wifi at check-in two hours ago."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s31",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "Device reported \"low power mode on\" at the last sync.",
+        "User is in a lecture hall with few outlets.",
+        "User usually works at a desk with a charger."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s32",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "Venue advertises fast wifi for all attendees.",
+        "User finished a large upload without complaint earlier."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s33",
+      "item": "charger",
+      "request": "My laptop has a long export running. Make sure it does not die.",
+      "context": [
+        "Last battery sync 45 minutes ago showed 14%.",
+        "User said \"plugging in now\" 30 minutes ago, no confirmation since."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s34",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "User finished a large upload without complaint earlier.",
+        "User joined the venue wifi at check-in two hours ago.",
+        "Venue advertises fast wifi for all attendees."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s35",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "Last battery sync 45 minutes ago showed 14%.",
+        "Last battery sync 50 minutes ago showed 71%."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s36",
+      "item": "hotspot",
+      "request": "I am about to join a video call from my laptop. Make sure I have internet.",
+      "context": [
+        "User joined the venue wifi at check-in two hours ago.",
+        "Venue wifi requires a login page the user may not have completed.",
+        "User complained the venue wifi was dropping an hour ago."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s37",
+      "item": "charger",
+      "request": "Keep my laptop going through the afternoon session.",
+      "context": [
+        "User is in a lecture hall with few outlets.",
+        "User texted \"almost dead\" an hour ago.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s38",
+      "item": "hotspot",
+      "request": "My laptop has to stay online for a deploy. Sort out connectivity if needed.",
+      "context": [
+        "User joined the venue wifi at check-in two hours ago.",
+        "User finished a large upload without complaint earlier."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s39",
+      "item": "charger",
+      "request": "My laptop has a long export running. Make sure it does not die.",
+      "context": [
+        "Last battery sync 45 minutes ago showed 14%.",
+        "User mentioned bringing a power bank this morning.",
+        "Calendar shows back-to-back meetings away from the desk."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s40",
+      "item": "hotspot",
+      "request": "I need to be online for the demo in an hour.",
+      "context": [
+        "Last network sync showed the laptop on a phone tether.",
+        "User complained the venue wifi was dropping an hour ago.",
+        "Venue wifi requires a login page the user may not have completed."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s41",
+      "item": "charger",
+      "request": "My phone is my ticket for tonight. Do not let it run out.",
+      "context": [
+        "User usually works at a desk with a charger.",
+        "Last battery sync 45 minutes ago showed 14%.",
+        "User is in a lecture hall with few outlets."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s42",
+      "item": "hotspot",
+      "request": "I need to be online for the demo in an hour.",
+      "context": [
+        "Last network sync showed the laptop on a phone tether.",
+        "Venue wifi requires a login page the user may not have completed."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s43",
+      "item": "charger",
+      "request": "My phone is my ticket for tonight. Do not let it run out.",
+      "context": [
+        "User texted \"almost dead\" an hour ago.",
+        "User mentioned bringing a power bank this morning.",
+        "Venue lists outlets at every seat."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s44",
+      "item": "hotspot",
+      "request": "Keep my laptop connected for the upload this afternoon.",
+      "context": [
+        "Last network sync 40 minutes ago showed the venue network.",
+        "User complained the venue wifi was dropping an hour ago.",
+        "User joined the venue wifi at check-in two hours ago."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s45",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "User mentioned bringing a power bank this morning.",
+        "Venue lists outlets at every seat.",
+        "User usually works at a desk with a charger."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s46",
+      "item": "hotspot",
+      "request": "My laptop has to stay online for a deploy. Sort out connectivity if needed.",
+      "context": [
+        "User said \"wifi here is terrible\" this morning.",
+        "Last network sync showed the laptop on a phone tether."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s47",
+      "item": "charger",
+      "request": "My laptop has a long export running. Make sure it does not die.",
+      "context": [
+        "User said \"plugging in now\" 30 minutes ago, no confirmation since.",
+        "Venue lists outlets at every seat.",
+        "Last battery sync 45 minutes ago showed 14%."
+      ],
+      "truth": "already_handled"
+    },
+    {
+      "id": "s48",
+      "item": "hotspot",
+      "request": "Keep my laptop connected for the upload this afternoon.",
+      "context": [
+        "Last network sync 40 minutes ago showed the venue network.",
+        "Venue wifi requires a login page the user may not have completed."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s49",
+      "item": "charger",
+      "request": "I need my phone alive for the next few hours. Handle power if needed.",
+      "context": [
+        "User mentioned bringing a power bank this morning.",
+        "User said \"plugging in now\" 30 minutes ago, no confirmation since.",
+        "User usually works at a desk with a charger."
+      ],
+      "truth": "real_need"
+    },
+    {
+      "id": "s50",
+      "item": "hotspot",
+      "request": "My laptop has to stay online for a deploy. Sort out connectivity if needed.",
+      "context": [
+        "Venue advertises fast wifi for all attendees.",
+        "User complained the venue wifi was dropping an hour ago.",
+        "Last network sync showed the laptop on a phone tether."
+      ],
+      "truth": "real_need"
+    }
+  ]
+}
