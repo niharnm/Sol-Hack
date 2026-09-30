@@ -198,6 +198,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
   const hold = {
     id: randomUUID().slice(0, 8),
     item,
+    network: NETWORK,
     payer: result.payment.payer,
     hold_usd: ITEMS[item].hold_usd,
     status: 'checking',

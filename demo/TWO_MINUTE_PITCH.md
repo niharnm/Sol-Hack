@@ -10,7 +10,7 @@ The repository also includes the general scenario buyer in `motto/buyer/buy.js`.
 
 ## Before the pitch
 
-- Open http://127.0.0.1:8787 beside a terminal in the Sol-Hack repository folder. Click Sound on.
+- Open http://127.0.0.1:8787 beside a terminal in the Sol-Hack repository folder. Use the fullscreen control if needed.
 - Sign in to an account with Claude Code access: run `claude`, then `/login` if needed.
 - Rehearse `node demo/run-agent.mjs` once. It restricts the model to Pay.sh MCP tools, uses sandbox payments, and asks for exactly one local charger purchase. The $1 ceiling comes from the desk's payment offer; the mission also instructs the model not to retry paid calls.
 - The launcher prints actual assistant text and tool names. The dashboard follows actual desk events. It does not display fabricated model thoughts.
@@ -20,10 +20,10 @@ The repository also includes the general scenario buyer in `motto/buyer/buy.js`.
 
 | Time | Say | Do |
 | --- | --- | --- |
-| 0:00–0:20 | “Imagine my laptop has a long job running. I tell my agent: keep it powered, authorize up to a dollar, and only pay for a rental if power arrives.” | Point to the mission card. Start with the charger unplugged. |
+| 0:00–0:20 | “Imagine my laptop has a long job running. I tell my agent: keep it powered, authorize up to a dollar, and only pay for a rental if power arrives.” | Show the execution graph and introduce the task verbally. Start with the charger unplugged. |
 | 0:20–0:45 | “Claude can read the seller’s terms and buy the service. It cannot inspect the laptop itself.” | Run `node demo/run-agent.mjs`. Show Claude reading terms and making its tool call in the terminal. |
-| 0:45–1:10 | “The desk holds the authorization while it checks delivery.” | Wait for the dashboard's “Plug in the charger” state, then connect the cable. Show $1 settled. |
-| 1:10–1:35 | “The agent receives a receipt it can use to report what happened: the outcome, amount, device reading, and payment signature.” | Show Claude's final response and click View API proof. |
+| 0:45–1:10 | “The desk holds the authorization while it checks delivery.” | Wait for the Evidence check node’s “Waiting for power” state, then connect the cable. Show $1 settled. |
+| 1:10–1:35 | “The agent receives a receipt it can use to report what happened: the outcome, amount, device reading, and payment signature.” | Show Claude's final response and select Evidence check, then Signed receipt → Verify signature. |
 | 1:35–1:50 | “If it was already plugged in—or power never arrived—the rental isn't kept. The agent gets $0.99 back after the one-cent check.” | Explain the alternate branch. A refund run can be shown during Q&A; avoid squeezing two model calls into two minutes. |
 | 1:50–2:00 | “An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest. This is test USDC in Pay.sh’s sandbox.” | Close on the workflow. |
 
@@ -53,7 +53,7 @@ Show the unpaid HTTP 402 challenge and $1 `upto` offer:
 curl -i -X POST http://127.0.0.1:8787/v1/rent/charger
 ```
 
-After a successful payment, inspect View API proof and its raw API link. Verify the latest completed device reading from the repository root:
+After a successful payment, select the execution, inspect Evidence check, use Verify signature, and open View raw API record. Verify the latest completed device reading from the repository root:
 
 ```bash
 node demo/verify-proof.mjs
