@@ -1,0 +1,241 @@
+{
+  "recordedAt": "2026-09-30T21:26:15.512Z",
+  "network": "localnet",
+  "note": "Actual sandbox purchases against live Crossref metadata. Payment signatures are API-reported; chain finality was not independently queried.",
+  "records": [
+    {
+      "query": "machine learning for drug discovery",
+      "passed": true,
+      "signature_verified": true,
+      "response": {
+        "hold_id": "6fb7fdb4",
+        "item": "research",
+        "outcome": "delivered",
+        "decision": "kept",
+        "charged_usd": "1.00",
+        "returned_usd": "0.00",
+        "reason": "Three citation records delivered and structural checks passed: $1.00 charged.",
+        "signed_reading": {
+          "holdId": "6fb7fdb4",
+          "item": "research",
+          "outcome": "delivered",
+          "detail": "citation_pack_delivered",
+          "query": "machine learning for drug discovery",
+          "provider": "Crossref public metadata API",
+          "raw": "3 distinct DOI-backed citation records delivered",
+          "checks": {
+            "required_count": 3,
+            "received_count": 3,
+            "distinct_dois": true,
+            "titles_present": true,
+            "passed": true
+          },
+          "deliverable": {
+            "type": "citation_pack",
+            "query": "machine learning for drug discovery",
+            "citations": [
+              {
+                "title": "Quantum machine learning in drug discovery",
+                "doi": "10.12681/eadd/58304",
+                "url": "https://doi.org/10.12681%2Feadd%2F58304",
+                "publisher": "National Documentation Centre (EKT)"
+              },
+              {
+                "title": "Machine learning in drug discovery: A practical introduction",
+                "doi": "10.6019/tol.mldrugdisc-t.2021.00001.1",
+                "url": "https://doi.org/10.6019%2Ftol.mldrugdisc-t.2021.00001.1",
+                "publisher": "EMBL-EBI"
+              },
+              {
+                "title": "Machine Learning Applications in Drug Discovery and Development",
+                "doi": "10.23880/oajpr-16000290",
+                "url": "https://doi.org/10.23880%2Foajpr-16000290",
+                "publisher": "Medwin Publishers"
+              }
+            ]
+          },
+          "limitations": "Checks cover count, unique DOI identifiers and nonempty titles. They do not establish semantic relevance, paper quality, DOI resolution or full-text access. Crossref metadata is public; this service packages and verifies it.",
+          "ts": 1790803564121,
+          "signature": "7137955d681c8fd167c26b5e800464bd716eb7b38b781b91ae46889d57fe9ff78784e713459d4a6a3e9fb2018525c1810063a9efa3f32998d9ff708e975b0103",
+          "devicePublicKey": "9c10ab8e0d6809c4d0e643dc569496c9f96215dad2b75110baf19c91396faff0"
+        },
+        "settlement_tx": "3ioTNbsDmQ6YZDR4XtjshEiaNMFcGyP8GvWKFTyjm9RkQGMRNkFLHA5HTDEJnQNi4rdPyiAFGEYHQ8yfjtnJKtr5",
+        "network": "localnet"
+      },
+      "steps": [
+        {
+          "status": "checking",
+          "at": 1790803563112
+        },
+        {
+          "status": "fetching",
+          "at": 1790803563114
+        },
+        {
+          "status": "validating",
+          "at": 1790803564120
+        },
+        {
+          "status": "kept",
+          "at": 1790803565248
+        }
+      ]
+    },
+    {
+      "query": "lithium ion battery recycling",
+      "passed": true,
+      "signature_verified": true,
+      "response": {
+        "hold_id": "9474cecb",
+        "item": "research",
+        "outcome": "delivered",
+        "decision": "kept",
+        "charged_usd": "1.00",
+        "returned_usd": "0.00",
+        "reason": "Three citation records delivered and structural checks passed: $1.00 charged.",
+        "signed_reading": {
+          "holdId": "9474cecb",
+          "item": "research",
+          "outcome": "delivered",
+          "detail": "citation_pack_delivered",
+          "query": "lithium ion battery recycling",
+          "provider": "Crossref public metadata API",
+          "raw": "3 distinct DOI-backed citation records delivered",
+          "checks": {
+            "required_count": 3,
+            "received_count": 3,
+            "distinct_dois": true,
+            "titles_present": true,
+            "passed": true
+          },
+          "deliverable": {
+            "type": "citation_pack",
+            "query": "lithium ion battery recycling",
+            "citations": [
+              {
+                "title": "Hydrometallurgical Recycling of Lithium-Ion Battery Cathode Material",
+                "doi": "10.1201/97810032692050-1",
+                "url": "https://doi.org/10.1201%2F97810032692050-1",
+                "publisher": "CRC Press"
+              },
+              {
+                "title": "RecycLiCo™ Recycling Process for Lithium-Ion Battery Cathode Active Materials",
+                "doi": "10.1201/97810032692050-3",
+                "url": "https://doi.org/10.1201%2F97810032692050-3",
+                "publisher": "CRC Press"
+              },
+              {
+                "title": "Lithium-Ion Battery Recycling Technologies",
+                "doi": "10.1201/9781003384557-4",
+                "url": "https://doi.org/10.1201%2F9781003384557-4",
+                "publisher": "CRC Press"
+              }
+            ]
+          },
+          "limitations": "Checks cover count, unique DOI identifiers and nonempty titles. They do not establish semantic relevance, paper quality, DOI resolution or full-text access. Crossref metadata is public; this service packages and verifies it.",
+          "ts": 1790803568821,
+          "signature": "445a8e7bf4f41827c2dea4e2b70aefb6b4ddd9a8ecaa5a324f7b44e7a9881ead8f45d73488f157c9ae67aa6861805da79fed6046a15341f1be5bce9ccd0a5c0b",
+          "devicePublicKey": "9c10ab8e0d6809c4d0e643dc569496c9f96215dad2b75110baf19c91396faff0"
+        },
+        "settlement_tx": "2uEjCDELt5ESPaQpgQrUNRNgUQTv6ThdtKAvvkfMFL6cNddCnKyCMCfRxuz5xEFFdpgri1fURZTNy1wABhSAHZpy",
+        "network": "localnet"
+      },
+      "steps": [
+        {
+          "status": "checking",
+          "at": 1790803568409
+        },
+        {
+          "status": "fetching",
+          "at": 1790803568410
+        },
+        {
+          "status": "validating",
+          "at": 1790803568821
+        },
+        {
+          "status": "kept",
+          "at": 1790803569929
+        }
+      ]
+    },
+    {
+      "query": "AI safety evaluation",
+      "passed": true,
+      "signature_verified": true,
+      "response": {
+        "hold_id": "3dd3980e",
+        "item": "research",
+        "outcome": "delivered",
+        "decision": "kept",
+        "charged_usd": "1.00",
+        "returned_usd": "0.00",
+        "reason": "Three citation records delivered and structural checks passed: $1.00 charged.",
+        "signed_reading": {
+          "holdId": "3dd3980e",
+          "item": "research",
+          "outcome": "delivered",
+          "detail": "citation_pack_delivered",
+          "query": "AI safety evaluation",
+          "provider": "Crossref public metadata API",
+          "raw": "3 distinct DOI-backed citation records delivered",
+          "checks": {
+            "required_count": 3,
+            "received_count": 3,
+            "distinct_dois": true,
+            "titles_present": true,
+            "passed": true
+          },
+          "deliverable": {
+            "type": "citation_pack",
+            "query": "AI safety evaluation",
+            "citations": [
+              {
+                "title": "Joint Evaluation (Jo.E): A Collaborative Framework for Rigorous Safety and Alignment Evaluation of AI Systems Integrating Human Expertise, LLMs, and AI Agents",
+                "doi": "10.20944/preprints202509.0042.v1",
+                "url": "https://doi.org/10.20944%2Fpreprints202509.0042.v1",
+                "publisher": "MDPI AG"
+              },
+              {
+                "title": "Design and Evaluation of AI Safety Mechanisms in ADAS and Autonomous Vehicle Architectures",
+                "doi": "10.63282/wcai25-120",
+                "url": "https://doi.org/10.63282%2Fwcai25-120",
+                "publisher": "ScienceTech Xplore"
+              },
+              {
+                "title": "Psychological Categories in AI Safety Evaluation: Institutionalization, Validation, and Platform Risk",
+                "doi": "10.2139/ssrn.6369178",
+                "url": "https://doi.org/10.2139%2Fssrn.6369178",
+                "publisher": "Elsevier BV"
+              }
+            ]
+          },
+          "limitations": "Checks cover count, unique DOI identifiers and nonempty titles. They do not establish semantic relevance, paper quality, DOI resolution or full-text access. Crossref metadata is public; this service packages and verifies it.",
+          "ts": 1790803574333,
+          "signature": "015c25752bae60d187970e19f623baa297a6bfa009b77dee5f3a70d97d6d6f883237163e4e3af9a667872eea79438320d6a502e6a7c8274fe75c82afd6ebc205",
+          "devicePublicKey": "9c10ab8e0d6809c4d0e643dc569496c9f96215dad2b75110baf19c91396faff0"
+        },
+        "settlement_tx": "3BCcHyoRaB9QbZZWjBEjGDw2ZcKiuizjfgQ7VsdgUnGDfCzzSparcAoAGqrxFChT3MgneqJtigv4RWBoYrKvNsFv",
+        "network": "localnet"
+      },
+      "steps": [
+        {
+          "status": "checking",
+          "at": 1790803573360
+        },
+        {
+          "status": "fetching",
+          "at": 1790803573361
+        },
+        {
+          "status": "validating",
+          "at": 1790803574332
+        },
+        {
+          "status": "kept",
+          "at": 1790803575495
+        }
+      ]
+    }
+  ]
+}

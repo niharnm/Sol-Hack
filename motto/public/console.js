@@ -6,6 +6,37 @@ const digital = h => ['research','verify'].includes(h.item);
 const visible = () => [...holds.values()].filter(h=>includeDevice || digital(h)).sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
 let terms, selectedId, inspected = 'receipt', live = false, ready = false, followNewest = true;
 const queue = [], verification = new Map();
+let replay = null, replayTimer, deliveryKey = '', previousSelection;
+const statusNames = {checking:'Payment authorized',fetching:'Finding sources',validating:'Checking result',kept:'Delivered',refunded:'Refunded',settle_failed:'Payment failed',interrupted:'Interrupted'};
+function animate(el) { el.classList.remove('appear'); void el.offsetWidth; el.classList.add('appear'); }
+function stopReplay() { clearTimeout(replayTimer); replay=null; }
+function displayHold() {
+  const h=holds.get(selectedId);
+  if(!replay || replay.id!==h?.id)return h;
+  const state=h.steps[replay.index]?.status;
+  if(!state || replay.index===h.steps.length-1)return h;
+  return {...h,status:state,reading:undefined,outcome:undefined,detail:undefined,charged_usd:null,returned_usd:null,settlementTx:undefined};
+}
+function renderProgress(h) {
+  const state=h?.status;
+  const step=!h?-1:state==='checking'?0:state==='fetching'?1:pending(h)?2:3;
+  document.querySelectorAll('[data-step]').forEach(el=>{
+    const n=Number(el.dataset.step),complete=n<step || (n===step&&settled(h));
+    el.classList.toggle('done',complete);el.classList.toggle('active',n===step&&!complete);el.classList.toggle('failed',n===step&&['settle_failed','interrupted'].includes(state));
+  });
+  text('process-label',replay?`RECORDED REPLAY · ${statusNames[state]??human(state)} · ${time(holds.get(selectedId).steps[replay.index]?.at)}`:statusNames[state]??(h?human(state):'Ready for a request'));
+  const recorded=holds.get(selectedId);
+  $('replay').disabled=!recorded?.steps?.length || pending(recorded);
+  text('replay',replay?'Stop replay ■':'Replay recorded steps ↻');
+  $('delivery-panel').classList.toggle('loading',Boolean(pending(h)));
+}
+function startReplay() {
+  if(replay){stopReplay();render();return;}
+  const h=holds.get(selectedId);if(!h?.steps?.length||pending(h))return;
+  replay={id:h.id,index:0};deliveryKey='';
+  function advance(){render();if(replay && replay.index<h.steps.length-1)replayTimer=setTimeout(()=>{replay.index++;advance();},1400);}
+  advance();
+}
 const pending = h => h && ['checking','waiting_for_power','waiting_for_display','judging','fetching','validating'].includes(h.status);
 const settled = h => h && ['kept','refunded'].includes(h.status);
 const rank = h => h?.status === 'checking' ? 0 : pending(h) ? 1 : 2;
@@ -15,7 +46,7 @@ const short = s => s ? String(s).slice(0,8) + '…' + String(s).slice(-6) : '—
 const time = t => t ? new Date(t).toLocaleTimeString([], {hour12:false}) : '—';
 const get = async path => { const r = await fetch(path); if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); };
 function text(id, value) { $(id).textContent = value; }
-function current() { return holds.get(selectedId); }
+function current() { return displayHold(); }
 function addEvent(h, source) {
   eventLog.unshift({id:h.id,status:h.status,at:Date.now(),source,detail:h.detail || h.reading?.reason || h.item});
   if (eventLog.length > 200) eventLog.pop();
@@ -28,7 +59,7 @@ function ingest(h, source) {
   if (!previous || previous.status !== h.status) addEvent(h,source);
   const sorted = [...holds.values()].sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
   for (const old of sorted.slice(500)) holds.delete(old.id);
-  if (followNewest || !holds.has(selectedId)) selectedId = visible()[0]?.id;
+  if (followNewest || !holds.has(selectedId)) { const next=visible()[0]?.id; if(next!==selectedId)stopReplay(); selectedId=next; }
 }
 function node(name,state) { const el=document.querySelector(`[data-node="${name}"]`); el.classList.remove('observed','working','error'); if (state) el.classList.add(state); }
 function renderRuns() {
@@ -38,9 +69,9 @@ function renderRuns() {
   for (const h of list) {
     const b=document.createElement('button'); b.className='run'+(selectedId===h.id?' selected':'')+(['settle_failed','interrupted'].includes(h.status)?' failed':'');
     b.setAttribute('aria-pressed',String(selectedId===h.id));
-    const title=document.createElement('div'); title.className='run-title'; title.textContent=h.item==='research'?'Research-source pack':human(h.item); title.append(document.createElement('i'));
+    const title=document.createElement('div'); title.className='run-title'; title.textContent=h.item==='research'?(h.query??h.reading?.query??'Research sources'):human(h.item); title.append(document.createElement('i'));
     const meta=document.createElement('div'); meta.className='run-meta'; const id=document.createElement('span'),status=document.createElement('span');id.textContent=h.id;status.textContent=h.item==='research'&&h.status==='kept'?'delivered':human(h.status);meta.append(id,status);b.append(title,meta);
-    b.onclick=()=>{selectedId=h.id;followNewest=h.id===list[0]?.id;render();};frag.append(b);
+    b.onclick=()=>{stopReplay();selectedId=h.id;followNewest=h.id===list[0]?.id;render();};frag.append(b);
   }
   $('runs').replaceChildren(frag);
   if(!list.length) {const p=document.createElement('p');p.className='muted pad';p.textContent='No digital purchases yet. Select New purchase to request a research pack.';$('runs').append(p);}
@@ -50,7 +81,7 @@ function renderEvents() {
   const frag=document.createDocumentFragment();
   for (const e of entries.slice(0,30)) {
     const row=document.createElement('div');row.className='event';const ts=document.createElement('time');ts.textContent=time(e.at);
-    const content=document.createElement('div'),title=document.createElement('b'),desc=document.createElement('small');title.textContent=human(e.status);desc.textContent=(e.source==='snapshot'?'Loaded API record · ':'Live desk event · ')+human(e.detail);content.append(title,desc);row.append(ts,content);frag.append(row);
+    const content=document.createElement('div'),title=document.createElement('b'),desc=document.createElement('small');title.textContent=statusNames[e.status]??human(e.status);desc.textContent=(e.source==='snapshot'?'Loaded API record · ':'Live desk event · ')+human(e.detail);content.append(title,desc);row.append(ts,content);frag.append(row);
   }
   $('events').replaceChildren(frag);
   if(!entries.length) {const p=document.createElement('p');p.className='muted';p.textContent='Waiting for desk events. No synthetic activity.';$('events').append(p);}
@@ -83,29 +114,32 @@ function inspect() {
   $('explorer').hidden=!(mainnet&&valid);
   if(mainnet&&valid)$('explorer').href='https://explorer.solana.com/tx/'+h.settlementTx;
   text('chain-note',h?.network==='localnet'?'Sandbox transaction · test USDC. No mainnet Explorer link.':!h?.network?'This older record has no network field. Explorer linking is unavailable.':'Signature reported by Pay.sh; chain finality is not independently checked here.');
-  text('raw-json',JSON.stringify(h??{},null,2));$('raw-link').href=h?'/v1/holds/'+encodeURIComponent(h.id):'/v1/holds';
+  text('raw-json',JSON.stringify(holds.get(selectedId)??{},null,2));$('raw-link').href=h?'/v1/holds/'+encodeURIComponent(h.id):'/v1/holds';
 }
 function renderDelivery(h) {
   const r=h?.reading, pack=r?.deliverable;
   text('purchase-query',pack?.query??h?.query??'Three DOI-backed sources for a technical brief.');
-  text('delivery-count',pack ? `${pack.citations.length} / 3 SOURCES` : 'AWAITING PURCHASE');
-  text('purchase-contract',r?.limitations??'Acceptance: 3 distinct DOI identifiers and nonempty titles. Live Crossref metadata; sandbox settlement.');
+  text('delivery-count',pack ? `${pack.citations.length} / 3 SOURCES` : pending(h)?'IN PROGRESS':'AWAITING PURCHASE');
+  text('purchase-contract',r?.checks ? `${r.checks.received_count} of 3 sources · unique DOI IDs · titles checked` : '3 sources · unique DOI IDs · titles required');
+  const nextKey=JSON.stringify([selectedId,Boolean(pending(h)),pack]);
+  if(nextKey===deliveryKey)return;deliveryKey=nextKey;
   const frag=document.createDocumentFragment();
   for(const c of pack?.citations??[]) {
-    const card=document.createElement('article');card.className='citation';
+    const card=document.createElement('article');card.className='citation appear';card.style.setProperty('--order',String(frag.childNodes.length));
     const label=document.createElement('span');label.className='eyebrow';label.textContent=c.publisher??'CROSSREF RECORD';
     const a=document.createElement('a');a.textContent=c.title;
     try {const u=new URL(c.url);if(u.protocol==='https:'&&u.hostname==='doi.org'){a.href=u.href;a.target='_blank';a.rel='noopener';}}catch{}
     const doi=document.createElement('code');doi.textContent=c.doi;card.append(label,a,doi);frag.append(card);
   }
   $('citations').replaceChildren(frag);
-  if(!pack?.citations?.length){const p=document.createElement('p');p.className='muted pad';p.textContent=pending(h)?'Fetching and validating the requested deliverable…':'Your delivered sources will appear here. No sample purchases are shown.';$('citations').append(p);}
+  if(!pack?.citations?.length){const p=document.createElement('p');p.className='muted pad';p.textContent=pending(h)?'Working on your request…':'Your sources will appear here.';$('citations').append(p);}
 }
 
 function render() {
-  const h=current();renderRuns();renderEvents();renderDelivery(h);
+  const h=current();renderRuns();renderEvents();renderDelivery(h);renderProgress(h);
+  if(previousSelection!==selectedId){animate($('delivery-panel'));previousSelection=selectedId;}
   text('run-id',h?.id??'AWAITING REQUEST');text('run-title',h?(h.item==='research'?'Research / '+(h.reading?.query??h.query??'source pack'):human(h.item)+' / '+human(h.status)):'Purchase. Verify. Settle.');
-  text('run-status',h?.item==='research'&&h.status==='kept'?'DELIVERED':human(h?.status??'idle').toUpperCase());$('graph').classList.toggle('running',Boolean(pending(h)));
+  text('run-status',h?.item==='research'&&h.status==='kept'?'DELIVERED':(statusNames[h?.status]??human(h?.status??'idle')).toUpperCase());$('graph').classList.toggle('running',Boolean(pending(h)));
   node('authorize',h?'observed':null);node('evidence',pending(h)?'working':h?.reading?'observed':null);node('decision',h?.outcome?'observed':null);node('settle',settled(h)?'observed':['settle_failed','interrupted'].includes(h?.status)?'error':null);node('receipt',h?.reading?.signature?'observed':null);
   text('authorize-label',h?usd(h.hold_usd)+' ceiling accepted':'Awaiting paid request');
   text('evidence-label',h?.status==='waiting_for_power'?'Waiting for power':h?.status==='waiting_for_display'?'Waiting for display':h?.status==='judging'?'Model evaluating evidence':h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running service':h?.reading?'Evidence returned':'Provider response / contract');
@@ -141,7 +175,8 @@ async function sync() {
   if(results.some(r=>r.status==='rejected'))setTimeout(sync,5000);
 }
 document.querySelectorAll('[data-node]').forEach(n=>n.onclick=()=>{inspected=n.dataset.node;inspect();});
-$('include-device').onchange=e=>{includeDevice=e.target.checked;selectedId=visible()[0]?.id;followNewest=true;render();};
+$('replay').onclick=startReplay;
+$('include-device').onchange=e=>{stopReplay();includeDevice=e.target.checked;selectedId=visible()[0]?.id;followNewest=true;render();};
 $('verify').onclick=verifyReading;$('launch').onclick=()=>$('launch-dialog').showModal();$('raw').onclick=()=>$('raw-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 $('copy-agent').onclick=async()=>{try{await navigator.clipboard.writeText($('purchase-command').textContent);text('copy-agent','Copied');}catch{text('copy-agent','Select and copy the command above');}};
