@@ -1,45 +1,65 @@
-# Two-minute demo
+# Two-minute agent demo
 
-Open http://127.0.0.1:8787. Click Sound on and press F for fullscreen. Start with the charger plugged in. The dashboard follows actual sandbox API events; no model reasoning is simulated. Use the terminal as the buyer, and say so.
+The story is a purchasing agent with a task and a budget. The charger is a visible service-delivery check. The job is an illustrative scenario: this demo does not launch or supervise a real background job.
+
+## Before the pitch
+
+- Open http://127.0.0.1:8787 beside a terminal in the Sol-Hack repository folder. Click Sound on.
+- Sign in to an account with Claude Code access: run `claude`, then `/login` if needed.
+- Rehearse `node demo/run-agent.mjs` once. It restricts the model to Pay.sh MCP tools, uses sandbox payments, and asks for exactly one local charger purchase. The $1 ceiling comes from the desk's payment offer; the mission also instructs the model not to retry paid calls.
+- The launcher prints actual assistant text and tool names. The dashboard follows actual desk events. It does not display fabricated model thoughts.
+- Keep the direct API fallback ready. If model latency exceeds your time budget, show a clearly labeled recording or explain the direct fallback; do not imply that a manual API call is autonomous reasoning.
+
+## On stage
 
 | Time | Say | Do |
 | --- | --- | --- |
-| 0:00–0:15 | “An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.” | Show the three-step flow. |
-| 0:15–0:40 | “This laptop is already plugged in. The desk checks before keeping the rental payment.” | Run the command below with the charger connected. Show $0.99 returned and the $0.01 check fee. |
-| 0:40–1:15 | “Now it needs power. The deposit waits for delivery.” | Unplug. Run the same command. Wait until the screen says to plug in, then reconnect. Show the $1 settlement. |
-| 1:15–1:40 | “This is backed by an API receipt: the device reading is signed, and the payment has a sandbox settlement signature.” | Click View API proof, then Open raw API. Optionally run the verification command below. |
-| 1:40–2:00 | “Today it’s a charger. The same conditional payment pattern can support other verifiable services. This demo uses test USDC in Pay.sh’s sandbox.” | Return to the workflow. Close on the approved pitch. |
+| 0:00–0:20 | “Imagine my laptop has a long job running. I tell my agent: keep it powered, authorize up to a dollar, and only pay for a rental if power arrives.” | Point to the mission card. Start with the charger unplugged. |
+| 0:20–0:45 | “Claude can read the seller’s terms and buy the service. It cannot inspect the laptop itself.” | Run `node demo/run-agent.mjs`. Show Claude reading terms and making its tool call in the terminal. |
+| 0:45–1:10 | “The desk holds the authorization while it checks delivery.” | Wait for the dashboard's “Plug in the charger” state, then connect the cable. Show $1 settled. |
+| 1:10–1:35 | “The agent receives a receipt it can use to report what happened: the outcome, amount, device reading, and payment signature.” | Show Claude's final response and click View API proof. |
+| 1:35–1:50 | “If it was already plugged in—or power never arrived—the rental isn't kept. The agent gets $0.99 back after the one-cent check.” | Explain the alternate branch. A refund run can be shown during Q&A; avoid squeezing two model calls into two minutes. |
+| 1:50–2:00 | “An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest. This is test USDC in Pay.sh’s sandbox.” | Close on the workflow. |
 
-## Payment command — run for both cases
+## Real agent command
+
+From the repository root:
 
 ```bash
-npx --yes --package @solana/pay pay --sandbox curl -sS -X POST http://127.0.0.1:8787/v1/rent/charger
+node demo/run-agent.mjs
 ```
 
-Warm this up before the pitch. The first npx run may install the CLI. A slow or failed payment is not a successful settlement: wait for the result, show its status, and use a clearly labeled recording if the sandbox is unavailable. Do not start another hold while the first is pending.
+If Claude says the account lacks access, sign in with `/login` using a Claude Code-enabled account. The launcher does not bypass authentication. It stops after three minutes; an open desk hold may still settle, so check the dashboard before retrying.
 
-## API proof, in the terminal
+## Direct API fallback — no model
 
-1. Without payment, show the actual 402 challenge and $1 `upto` offer:
+```bash
+npx --yes --package @solana/pay pay --sandbox curl -sS -X POST http://127.0.0.1:8787/v1/rent/charger | python3 -m json.tool
+```
+
+Connected before the call: refund. Unplugged, then connected when the desk is waiting: rental kept. No delivery within 30 seconds: refund. This command proves the payment/check flow, not an autonomous purchasing decision.
+
+## API proof for questions
+
+Show the unpaid HTTP 402 challenge and $1 `upto` offer:
 
 ```bash
 curl -i -X POST http://127.0.0.1:8787/v1/rent/charger
 ```
 
-2. Run the payment command above. The response includes `decision`, charged and returned amounts, `signed_reading`, and `settlement_tx`.
-3. From the repository root, cryptographically verify the latest completed reading and check that charged + returned equals $1:
+After a successful payment, inspect View API proof and its raw API link. Verify the latest completed device reading from the repository root:
 
 ```bash
 node demo/verify-proof.mjs
 ```
 
-The verification script checks the reading against the desk's advertised public key. It does not independently confirm chain finality or prove a sensor cannot lie. Sandbox transaction signatures are not mainnet Explorer links.
+The script verifies the signature against the desk's advertised key and checks that charged plus returned equals $1. It does not independently confirm chain finality or prove the sensor cannot lie. Sandbox signatures are not mainnet Explorer links.
 
-## Start the local server if needed
+## Start the desk if needed
 
 ```bash
 cd motto
 npm start
 ```
 
-Default configuration is the sandbox. Keep real-wallet environment variables out of the demo shell. The server must run on the laptop being checked.
+Default configuration is sandbox. Keep real-wallet environment variables out of the demo shell. The server must run on the laptop being checked.

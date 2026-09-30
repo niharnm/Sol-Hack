@@ -71,3 +71,18 @@ pre { padding:18px; border:1px solid #2d4033; background:#0a100c; border-radius:
   .hero { padding:16px 24px; }
   .demo-actions .btn { padding:12px 22px; }
 }
+.mission { max-width:1020px; width:100%; margin:0 auto; border-left:2px solid #99d5ae; padding:4px 20px; }
+.mission blockquote { margin:10px 0; font-size:clamp(16px,1.7vw,23px); letter-spacing:-.025em; line-height:1.4; color:#d2dfd6; }
+.mission-tags { display:flex; gap:8px 20px; flex-wrap:wrap; color:#829e8c; font:11px ui-monospace,monospace; }
+@media(min-width:701px) and (max-height:850px) {
+  .intro h2 { font-size:clamp(32px,3.6vw,46px); margin:8px 0; }
+  .intro { padding:0; }
+  .intro p { font-size:13px; }
+  .page { gap:12px; }
+  .mission blockquote { font-size:17px; margin:6px 0; }
+  .flow-node { padding:12px; }
+  .flow-symbol { width:44px; height:44px; margin-bottom:8px; border-radius:14px; }
+  .flow-symbol svg { width:26px; height:26px; }
+  .hero { padding:12px 22px; }
+  .hero-why { font-size:12px; }
+}

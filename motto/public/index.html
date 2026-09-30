@@ -176,7 +176,12 @@
   <section class="intro">
     <div class="eyebrow">Pay.sh × Solana · Live sandbox</div>
     <h2>A dollar authorized.<br><span>A promise verified.</span></h2>
-    <p>Your agent handles the payment. The desk checks the real world.</p>
+    <p>Give your agent a task and a budget. The desk verifies the service.</p>
+  </section>
+  <section class="mission" aria-label="Demo mission">
+    <div class="eyebrow">The assignment · illustrative task</div>
+    <blockquote>“Keep my laptop powered while my job runs.<br>Authorize up to $1. Only pay for a rental if power arrives.”</blockquote>
+    <div class="mission-tags"><span>Buyer: Claude</span><span>Budget: $1 test USDC</span><span>Service: charger rental</span></div>
   </section>
   <section class="flow" id="agent-flow" data-active="false" aria-label="Live agent workflow">
     <div class="flow-node"><div class="flow-symbol"><svg viewBox="0 0 40 40"><rect x="7" y="10" width="26" height="23" rx="8"/><path d="M20 5v5M15 20v3m10-3v3m-11 5h12M3 19v8m34-8v8"/></svg></div><h3>Your agent</h3><p id="agent-step">Ready to authorize</p></div>
@@ -216,11 +221,11 @@
   </section>
 
   <div class="demo-actions">
-    <button class="btn primary" id="launch-demo">Run a sandbox hold ↗</button>
+    <button class="btn primary" id="launch-demo">Launch the agent ↗</button>
     <button class="btn" id="show-proof">View API proof ↗</button>
   </div>
-  <div class="demo-note">Test USDC · Real device readings · Live API events</div>
-  <dialog id="demo-dialog"><div class="dialog-top"><h2>Send your agent to the desk</h2><button class="btn" data-close>Close</button></div><p>Run this command in your terminal. Keep the charger connected for a refund. For delivery, unplug first and reconnect when the desk is waiting for power.</p><pre id="demo-command">npx --yes --package @solana/pay pay --sandbox curl -sS -X POST http://127.0.0.1:8787/v1/rent/charger</pre><button class="btn primary" id="copy-command">Copy command</button><p>This sends a real sandbox payment through Pay.sh. The terminal acts as the buyer; no model reasoning is simulated here.</p></dialog>
+  <div class="demo-note">Claude makes the purchase in your terminal · This view follows live desk events</div>
+  <dialog id="demo-dialog"><div class="dialog-top"><h2>Send your agent to the desk</h2><button class="btn" data-close>Close</button></div><p>From the Sol-Hack repository folder, run this command. Claude reads the terms, makes a sandbox purchase, and explains its receipt. Keep this terminal beside the dashboard so judges can see the actual tool calls. Requires a signed-in Claude CLI.</p><pre id="demo-command">node demo/run-agent.mjs</pre><button class="btn primary" id="copy-command">Copy command</button><p>The mission is a demo scenario; the model tool calls and sandbox payment are real. Unplug before running and reconnect when the desk is waiting for power. No task execution or model reasoning is fabricated on this page.</p><details><summary>Direct API fallback (no model)</summary><p>If Claude is not signed in, use this to demonstrate the payment protocol. Say that this is a direct API call.</p><pre>npx --yes --package @solana/pay pay --sandbox curl -sS -X POST http://127.0.0.1:8787/v1/rent/charger</pre></details></dialog>
   <dialog id="proof-dialog"><div class="dialog-top"><h2>The receipt, not just the animation</h2><button class="btn" data-close>Close</button></div><p id="proof-caption">No hold yet. Run a sandbox hold to see its API record.</p><pre id="proof-json">{}</pre><a class="btn" id="proof-api" href="/v1/holds" target="_blank" rel="noopener">Open raw API ↗</a><p>A signed reading proves its source and integrity. Sandbox signatures are not mainnet Explorer proof.</p></dialog>
 
   <section id="earlier" hidden>
