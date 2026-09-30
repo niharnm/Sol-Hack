@@ -4,9 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test test/*.test.js",
     "start": "node src/server.js",
-    "bench": "node bench/generate.js && node bench/run.js"
+    "bench": "node bench/generate.js && node bench/run.js",
+    "tunnel": "cloudflared tunnel --url http://127.0.0.1:8787"
   },
   "keywords": [],
   "author": "",

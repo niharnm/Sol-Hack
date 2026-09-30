@@ -5,14 +5,20 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
-import { checkCharger, checkHotspot, devicePublicKey } from './checks.js';
+import { chargerWaitMs, checkCharger, checkHotspot, devicePublicKey } from './checks.js';
 import { postReceipt } from './receipt.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const NETWORK = process.env.NETWORK ?? 'localnet';
 const RPC_URL = process.env.RPC_URL ?? (NETWORK === 'localnet' ? 'https://402.surfnet.dev:8899' : undefined);
 const CHARGER_WAIT_MS = Number(process.env.CHARGER_WAIT_MS ?? 30_000);
+// Hold log location. Tests and parallel runs point this at a scratch directory.
+const DATA_DIR = process.env.DATA_DIR ?? 'data';
+const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
+// Enough history for the dashboard counters without growing memory forever.
+const MAX_HOLDS = 500;
 
 // USDC has 6 decimals: $1.00 hold, $0.01 check fee.
 const HOLD_BASE_UNITS = 1_000_000n;
@@ -55,15 +61,55 @@ const pay = await createPayKit({
 });
 
 // Hold log: in memory for the dashboard, appended to disk for the record.
-mkdirSync('data', { recursive: true });
-const holds = [];
+mkdirSync(DATA_DIR, { recursive: true });
+const holds = loadHolds();
 const listeners = new Set();
 function publish(hold) {
   const i = holds.findIndex(h => h.id === hold.id);
   if (i === -1) holds.unshift(hold);
   else holds[i] = hold;
-  appendFileSync('data/holds.jsonl', JSON.stringify(hold) + '\n');
+  if (holds.length > MAX_HOLDS) holds.pop();
+  try {
+    appendFileSync(HOLDS_FILE, JSON.stringify(hold) + '\n');
+  } catch (error) {
+    // The payment is already authorized at this point: a full disk must not stop settle().
+    console.error(`hold log write failed for ${hold.id}:`, error.message);
+  }
   for (const send of listeners) send(hold);
+}
+
+// Rebuild the log on start so counters survive a restart. The file has one line
+// per publish, so the last line for an id is that hold's latest state.
+function loadHolds() {
+  let text;
+  try {
+    text = readFileSync(HOLDS_FILE, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  const latest = new Map();
+  let skipped = 0;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let hold;
+    try {
+      hold = JSON.parse(line);
+    } catch {
+      // A torn write (crash mid-append) must not stop the desk from starting.
+    }
+    if (typeof hold?.id !== 'string') {
+      skipped++;
+      continue;
+    }
+    // A hold still checking when the desk went down never settled; say so instead of showing it as live.
+    if (hold.status === 'checking' || hold.status === 'waiting_for_power') {
+      hold = { ...hold, status: 'interrupted', detail: 'desk restarted during the check' };
+    }
+    latest.set(hold.id, hold);
+  }
+  if (skipped) console.warn(`Skipped ${skipped} malformed line(s) in ${HOLDS_FILE}`);
+  return [...latest.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0)).slice(0, MAX_HOLDS);
 }
 
 // Settlement headers carry the transaction signature; x402 puts it in a
@@ -109,7 +155,17 @@ app.get('/v1/terms', (_req, res) => {
   });
 });
 
+app.get('/healthz', (_req, res) => {
+  res.json({ ok: true, network: NETWORK, uptime_s: Math.round(process.uptime()), holds: holds.length });
+});
+
 app.get('/v1/holds', (_req, res) => res.json({ holds }));
+
+app.get('/v1/holds/:id', (req, res) => {
+  const hold = holds.find(h => h.id === req.params.id);
+  if (!hold) return res.status(404).json({ error: `no hold "${req.params.id}"` });
+  res.json(hold);
+});
 
 // Benchmark summary for the dashboard chart (full per-scenario data stays in bench/results.json).
 app.get('/v1/bench', (_req, res) => {
@@ -160,7 +216,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
   try {
     reading =
       item === 'charger'
-        ? await checkCharger({ holdId: hold.id, waitMs: Number(req.body?.wait_seconds ?? CHARGER_WAIT_MS / 1000) * 1000, onUpdate: u => publish({ ...hold, ...u }) })
+        ? await checkCharger({ holdId: hold.id, waitMs: chargerWaitMs(req.body?.wait_seconds, CHARGER_WAIT_MS), onUpdate: u => publish({ ...hold, ...u }) })
         : await checkHotspot({ holdId: hold.id });
   } catch (error) {
     reading = { holdId: hold.id, item, outcome: 'check_failed', detail: String(error?.message ?? error), ts: Date.now() };
@@ -232,7 +288,19 @@ app.get('/openapi.json', async (_req, res, next) => {
   }
 });
 
+// Unknown API routes answer in JSON like the rest of the API.
+app.use('/v1', (req, res) => res.status(404).json({ error: `no route ${req.method} ${req.originalUrl}` }));
+
+// Bad JSON bodies and pay-kit or RPC failures go back as JSON. Express's default
+// HTML error page would leak stack traces and file paths to the agent.
+app.use((error, req, res, next) => {
+  const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 600 ? error.status : 500;
+  console.error(`${req.method} ${req.originalUrl} -> ${status}`, status < 500 ? error.message : error);
+  if (res.headersSent) return next(error);
+  res.status(status).json({ error: status < 500 ? error.message : 'internal error' });
+});
+
 app.listen(PORT, () => {
-  console.log(`Deposit Desk on http://127.0.0.1:${PORT}  network=${NETWORK}  recipient=${pay.config.operator.recipient}`);
+  console.log(`Deposit Desk on http://127.0.0.1:${PORT}  network=${NETWORK}  recipient=${pay.config.operator.recipient}  holds=${holds.length}`);
   console.log(`Device key ${devicePublicKey}`);
 });

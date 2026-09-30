@@ -55,6 +55,16 @@ export async function readNetwork() {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// The agent picks the charger wait window, but it has to end well inside the
+// x402 offer's maxTimeoutSeconds (300) so the hold can still settle. Anything
+// that is not a finite number (or a numeric string) gets the desk default.
+const MAX_WAIT_SECONDS = 240;
+export function chargerWaitMs(waitSeconds, fallbackMs) {
+  const n = typeof waitSeconds === 'string' && waitSeconds.trim() !== '' ? Number(waitSeconds) : waitSeconds;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return fallbackMs;
+  return Math.min(Math.max(n, 0), MAX_WAIT_SECONDS) * 1000;
+}
+
 // Charger: already on power -> handled. Otherwise the rental is live and we
 // wait up to `waitMs` for the cable to deliver power. Delivered -> keep the
 // hold. Never delivered -> refund, the agent paid for nothing.
