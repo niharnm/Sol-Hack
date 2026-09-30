@@ -16,8 +16,9 @@ npm run buy:devnet -- "battery recycling"
 
 Fund the operator with Devnet SOL and the buyer with Devnet SOL plus at least 1 Devnet USDC.
 Use https://faucet.solana.com and https://faucet.circle.com (choose Solana Devnet).
-The console uses the PayKit SDK with Devnet-only, exact-origin, $1-per-purchase permissions.
-Remote users run `buy:devnet` with the desk URL as a second argument; the public UI cannot
+The local source-pack console uses the PayKit SDK with Devnet-only, exact-origin, $1-per-purchase permissions.
+The purchase workspace generates a `scripts/buy-service.mjs` command for remote Devnet buyers, capped
+to the exact amount reviewed for that service. The older `buy:devnet` command still buys source packs. The public UI cannot
 spend the hosting machine's wallet. Transactions link to Explorer with `?cluster=devnet`.
 Successful settlements also attempt an onchain memo. `node demo/verify-proof.mjs` from the
 repo root checks both the signed result and Devnet transaction confirmation.
@@ -41,10 +42,10 @@ The signed reading includes the deliverable and every check result. Crossref met
 the paid service is packaging and structural validation, not access to a paid upstream API.
 Checks do not establish semantic relevance, scientific quality, DOI resolution or full-text access.
 
-Open the local console and type a topic to run a Devnet purchase. A partner with Claude Code
+Open the local console, select **Source pack**, enter a topic, and review the purchase to run a Devnet purchase. A partner with Claude Code
 access can run `node demo/run-agent.mjs` from the repository root. `npm run buyer` also defaults to
 `research-brief`. See [the two-minute demo](../demo/TWO_MINUTE_PITCH.md).
-The console defaults to digital purchases; earlier device demos remain available through a checkbox.
+The workspace lists every service published by the desk, with its current price, check fee, and settlement rules.
 
 
 > An agent authorizes a ceiling. We check whether the need is already handled, settle what’s owed, and return the rest.
@@ -162,12 +163,41 @@ tailscale funnel --bg 8787                        # permanent public URL: https:
 cloudflared tunnel --url http://127.0.0.1:8787    # fallback: temporary URL (or: npm run tunnel)
 ```
 
-## Dashboard
+## Purchase workspace
 
-Open `http://127.0.0.1:8787/` while the desk runs. It is live over server-sent events (SSE): counters
-for holds, rentals kept, holds refunded and dollars returned to agents, the newest hold as a large card
-that flips from checking to kept or refunded, earlier holds below it, and a benchmark chart. Press `f`
-for fullscreen. Sound is off until you click the Sound button.
+The responsive workspace at `/` starts with a service request and a review of the desk's live
+terms. It shows all purchases, a live progress timeline, the authorized ceiling, settled and returned
+amounts, and the evidence behind each outcome. On phones the money card appears first.
+Payment completion and evidence success are separate: a failed check can still have a successful
+return of funds. Unconfirmed settlements show no claimed money movement.
+
+Receipts open on demand, support local Ed25519 verification, link supported transaction signatures
+to Explorer, and download as JSON. API records and execution details remain available in the receipt.
+The workspace shows shared desk activity; it is not an authenticated personal wallet.
+
+Local source-pack purchases require a review followed by an explicit authorization. Other services
+and remote buyers receive a command to run with their own buyer wallet. For Devnet, from `motto/`:
+
+```sh
+node scripts/buy-service.mjs charger '{}' https://motto.tail039d5c.ts.net 3.00
+```
+
+The last required argument is the reviewed ceiling. The buyer refuses a different current price or
+network and scopes PayKit permissions to that origin and amount. Copying from the workspace also
+supplies a stable request key. Inspect a failed settlement before retrying: the server may create a
+fresh hold even with the same key. Device checks inspect the hosting device. The workspace does not
+implement arbitrary seller discovery or certify fulfillment beyond the recorded service check.
+
+Run browser regression checks with an existing Playwright installation (no payments are made):
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright node demo/check-ui.mjs  # from repository root
+```
+
+The checks start an isolated fixture server and cover review, live transitions, payment failure,
+evidence failure, signature verification, receipt download, local authorization, responsive layouts,
+and the generic Devnet buyer's pre-payment rejections. Screenshots are saved to the system temp
+folder, or to `UI_SCREENSHOT_DIR` when specified.
 
 ## API
 
@@ -310,7 +340,7 @@ Team: Nihar (product), Nithin (design, polish, demo).
 
 ### Typed research purchases in the local console
 
-Open `http://127.0.0.1:8787`, enter a topic, and select **Find 3 sources**.
+Open `http://127.0.0.1:8787`, select **Source pack**, enter a topic, and select **Review purchase**, then authorize the test purchase.
 On localnet, the local console invokes the Pay.sh CLI against the existing paid
 research endpoint. It fetches live Crossref metadata, checks three distinct DOI
 identifiers and nonempty titles, signs the delivery, and attempts settlement.

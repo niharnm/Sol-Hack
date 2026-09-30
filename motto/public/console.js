@@ -11,16 +11,22 @@ const serviceName = item => serviceNames[item] ?? human(item);
 let reviewedRequest;
 function animate(el) { el.classList.remove('appear'); void el.offsetWidth; el.classList.add('appear'); }
 function renderProgress(h) {
-  const state=h?.status;
-  const step=!h?-1:state==='checking'?0:state==='fetching'?1:state==='settling'?3:pending(h)?2:3;
+  const state=h?.status, attention=['settle_failed','interrupted'].includes(state);
+  const step=!h?-1:state==='checking'?0:['fetching','waiting_for_power','waiting_for_display','waiting_for_delivery'].includes(state)?1:['judging','validating'].includes(state)?2:3;
+  const evidenceFailed=['check_failed','inconclusive','not_delivered'].includes(h?.outcome);
   document.querySelectorAll('[data-step]').forEach(el=>{
-    const n=Number(el.dataset.step),complete=n<step || (n===step&&settled(h));
-    el.classList.toggle('done',complete);el.classList.toggle('active',n===step&&!complete);el.classList.toggle('failed',n===step&&['settle_failed','interrupted'].includes(state));
+    const n=Number(el.dataset.step);
+    // Payment completion does not turn an unsuccessful evidence check into a success.
+    const failed=(n===2&&evidenceFailed)||(n===step&&attention);
+    const complete=!failed&&(n<step || (n===step&&settled(h)))&&(state!=='interrupted'||n===0);
+    el.classList.toggle('done',complete);el.classList.toggle('active',n===step&&!complete&&!failed);el.classList.toggle('failed',failed);
+    if(n===step&&pending(h))el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');
   });
   text('process-label',statusNames[state]??(h?human(state):'Ready for a request'));
-  text('progress-count',!h?'Awaiting purchase':settled(h)?'Payment complete': 'In progress');
+  text('progress-count',!h?'Awaiting purchase':settled(h)?'Payment complete':attention?'Needs attention':'In progress');
   $('delivery-panel').classList.toggle('loading',Boolean(pending(h)));
 }
+
 const pending = h => h && ['checking','waiting_for_power','waiting_for_display','waiting_for_delivery','judging','fetching','validating','settling'].includes(h.status);
 const settled = h => h && ['kept','refunded'].includes(h.status);
 const rank = h => h?.status === 'checking' ? 0 : pending(h) ? 1 : 2;
@@ -108,7 +114,7 @@ function renderDelivery(h) {
   text('purchase-kind',h?serviceName(h.item).toUpperCase():'YOUR PURCHASE');
   text('purchase-query',h?(pack?.query??h.query??serviceName(h.item)):'A clear outcome. A visible money trail.');
   text('delivery-count',pack ? `${pack.citations?.length??0} RECORDS` : pending(h)?'IN PROGRESS':r?'EVIDENCE RECORDED':'AWAITING PURCHASE');
-  const reason=r?.reason??h?.detail;
+  const reason=r?.reason??r?.detail??h?.detail;
   text('purchase-contract',reason??(h?terms?.items?.[h.item]?.check??'Waiting for the service to report evidence.':'Select a service above. Motto will show what was checked and why funds moved.'));
   const nextKey=JSON.stringify([selectedId,h?.status,pack,reason]);
   if(nextKey===deliveryKey)return;deliveryKey=nextKey;
@@ -212,6 +218,7 @@ $('request-form').onsubmit=event=>{
   if((item==='research'&&query.length<3)||(item==='verify'&&!query)){text('request-feedback','Please enter your request.');return;}
   const body=item==='research'?{query}:item==='verify'?{condition:query}:{};
   reviewedRequest={item,body};
+  const requestKey=crypto.randomUUID();
   text('review-title',serviceName(item));text('review-description',[contract.covers,contract.check].filter(Boolean).join('. '));text('review-budget',usd(contract.hold_usd)+' USDC');
   $('review-rules').replaceChildren(...Object.values(contract.rules??{}).map(rule=>{const li=document.createElement('li');li.textContent=rule;return li;}));
   const local=item==='research'&&terms.console_purchase;
@@ -220,8 +227,8 @@ $('request-form').onsubmit=event=>{
   text('review-note',local?'This uses the hosting laptop’s test buyer wallet. The maximum is a hold, not an immediate final charge.': 'Use your own buyer wallet. This page cannot spend the hosting wallet remotely. '+(terms.network==='mainnet'?'This desk uses real funds.':'This desk uses test USDC.'));
   const origin=shellQuote(location.origin), payload=shellQuote(JSON.stringify(body));
   const command=terms.network==='devnet'
-    ? `cd motto && node scripts/buy-service.mjs ${shellQuote(item)} ${payload} ${origin} ${shellQuote(contract.hold_usd)}`
-    : `npx --yes --package @solana/pay pay ${terms.network==='localnet'?'--sandbox':'--mainnet'} curl -sS -X POST ${shellQuote(location.origin+'/v1/rent/'+item)} -H 'Content-Type: application/json' -d ${payload}`;
+    ? `cd motto && node scripts/buy-service.mjs ${shellQuote(item)} ${payload} ${origin} ${shellQuote(contract.hold_usd)} ${shellQuote(requestKey)}`
+    : `npx --yes --package @solana/pay pay ${terms.network==='localnet'?'--sandbox':'--mainnet'} curl -sS -X POST ${shellQuote(location.origin+'/v1/rent/'+item)} -H 'Content-Type: application/json' -H ${shellQuote('Idempotency-Key: '+requestKey)} -d ${payload}`;
   text('purchase-command',command);text('copy-agent','Copy purchase command');$('launch-dialog').showModal();
 };
 $('confirm-purchase').onclick=async()=>{
