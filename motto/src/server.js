@@ -41,6 +41,8 @@ const holds = loadHolds();
 const listeners = new Set();
 function publish(hold) {
   const i = holds.findIndex(h => h.id === hold.id);
+  const steps = holds[i]?.steps ?? hold.steps ?? [];
+  hold = { ...hold, steps: steps.at(-1)?.status === hold.status ? steps : [...steps, { status: hold.status, at: Date.now() }] };
   // A late update (receipt) for a hold already evicted from memory is logged but not re-inserted.
   const evicted = i === -1 && hold.status !== 'checking' && holds.length >= MAX_HOLDS;
   if (i !== -1) holds[i] = hold;
