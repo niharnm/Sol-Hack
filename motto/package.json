@@ -1,10 +1,10 @@
 {
   "name": "motto",
   "version": "0.9.0",
-  "description": "Deposit desk for AI agents buying real-world things: hold the price, check the need, settle only what is owed. x402 upto on Solana via Pay.sh.",
+  "description": "Digital services for AI agents: user-selected spending limits, accepted deliverables, and USDC settlement through Pay.sh.",
   "main": "src/server.js",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
     "test": "node --test test/*.test.js",

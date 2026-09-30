@@ -32,7 +32,7 @@ function channelId(req) {
 }
 
 function settlementTransaction(headers) {
-  const value = Object.entries(headers).find(([name]) => name.toLowerCase() === 'payment-response')?.[1];
+  const value = Object.entries(headers).find(([name]) => ['x-payment-response', 'payment-response'].includes(name.toLowerCase()))?.[1];
   if (!value) return undefined;
   try {
     const receipt = JSON.parse(Buffer.from(value, 'base64').toString('utf8'));
@@ -55,6 +55,8 @@ export function createApp({ pay, store, signReading, signingPublicKey, network =
   });
   app.use(express.json({ limit: '16kb' }));
   const pending = new Set();
+  const pendingKeys = new Set();
+  const pendingChannels = new Set();
   let consoleBusy = false;
 
   function authorize(req, res, next) {
@@ -115,7 +117,10 @@ export function createApp({ pay, store, signReading, signingPublicKey, network =
     if (Date.parse(quote.expires_at) <= clock()) return res.status(410).json({ error: 'Quote expired. Request a new quote before authorizing payment.' });
     if (req.body && Object.keys(req.body).length) return res.status(400).json({ error: 'Purchase input is fixed by the quote; this endpoint accepts no body.' });
     if (pending.has(quote.id)) return res.status(409).json({ error: 'Payment verification for this quote is already in progress. Inspect purchases before retrying.' });
+    if (req.get('payment-signature') && req.get('x-payment')) return res.status(400).json({ error: 'Send one payment proof header, not both payment-signature and x-payment.' });
+    if (pendingKeys.has(key)) return res.status(409).json({ error: 'This Idempotency-Key is already being authorized. Inspect purchase history before retrying.' });
     const channel = channelId(req);
+    if (channel && pendingChannels.has(channel)) return res.status(409).json({ error: 'This payment channel is already being authorized.' });
     if (channel && store.purchaseForChannel(channel)) return res.status(409).json({ error: 'This payment channel already belongs to a purchase.' });
     const gate = Gate.create({ name: `quote:${quote.id}`, ...usage(usd(quote.ceiling_usd), { externalId: quote.id, description: `Research: ${quote.input.count} citation records` }) },
       { accept: ['x402'], payTo: pay.config.operator.recipient });
@@ -125,8 +130,11 @@ export function createApp({ pay, store, signReading, signingPublicKey, network =
     if (!base) return res.status(400).json({ error: 'Configure PUBLIC_BASE_URL for remote paid requests.' });
     const request = new Request(`${base}${req.originalUrl}`, { method: 'POST', headers });
     pending.add(quote.id);
+    pendingKeys.add(key);
+    if (channel) pendingChannels.add(channel);
     let grant;
     let purchase;
+    let purchasePersisted = false;
     let settleStarted = false;
     try {
       const result = await pay.requirePayment(request, gate);
@@ -141,10 +149,11 @@ export function createApp({ pay, store, signReading, signingPublicKey, network =
       const now = new Date(clock()).toISOString();
       purchase = { id: randomUUID(), quote_id: quote.id, quote_hash: quote.quote_hash, service: quote.service,
         input: quote.input, acceptance: quote.acceptance, max_spend_usd: quote.max_spend_usd,
-        ceiling_usd: quote.ceiling_usd, unit_price_usd: quote.unit_price_usd, currency: 'USDC', network,
+        ceiling_usd: quote.ceiling_usd, payment_channel_id: channel, unit_price_usd: quote.unit_price_usd, currency: 'USDC', network,
         status: 'fetching', charged_usd: null, returned_usd: null, created_at: now, updated_at: now,
         reason: 'Payment authorized. Fetching records for the accepted quote.' };
       store.createPurchase(purchase, key, channel);
+      purchasePersisted = true;
       const update = changes => {
         purchase = { ...purchase, ...changes, updated_at: new Date(clock()).toISOString() };
         store.updatePurchase(purchase);
@@ -162,8 +171,8 @@ export function createApp({ pay, store, signReading, signingPublicKey, network =
       if (amount > ceiling || amount > toBaseUnits(quote.max_spend_usd) ||
         (delivery.outcome !== 'delivered' && amount !== 0n) ||
         (delivery.outcome === 'delivered' && (delivery.checks?.passed !== true || delivery.units_delivered !== quote.input.count || amount !== ceiling))) throw new Error('Delivery charge does not satisfy the accepted quote');
-      const reading = signReading({ purchase_id: purchase.id, quote_id: quote.id, quote_hash: quote.quote_hash,
-        service: quote.service, ...delivery, ts: clock() });
+      const reading = signReading({ ...delivery, purchase_id: purchase.id, quote_id: quote.id, quote_hash: quote.quote_hash,
+        service: quote.service, ts: clock() });
       update({ status: 'settling', reading, reason: 'Delivery checked. Settlement is pending.' });
       if (amount > 0n) result.charge.charge(amount);
       settleStarted = true;
@@ -188,9 +197,13 @@ export function createApp({ pay, store, signReading, signingPublicKey, network =
         try { await grant.settle(); }
         catch (releaseError) { console.error('Unable to release payment after a service error:', releaseError.message); }
       }
-      if (purchase) store.updatePurchase({ ...purchase, status: 'settle_failed', reason: 'A service error interrupted the purchase. Payment is unconfirmed. Inspect before retrying.', updated_at: new Date(clock()).toISOString() });
+      if (purchasePersisted) store.updatePurchase({ ...purchase, status: 'settle_failed', reason: 'A service error interrupted the purchase. Payment is unconfirmed. Inspect before retrying.', updated_at: new Date(clock()).toISOString() });
       throw error;
-    } finally { pending.delete(quote.id); }
+    } finally {
+      pending.delete(quote.id);
+      pendingKeys.delete(key);
+      if (channel) pendingChannels.delete(channel);
+    }
   });
 
   app.post('/v1/console/purchases', async (req, res) => {

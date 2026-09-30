@@ -16,6 +16,7 @@ async function workspace(t, options = {}) {
   const store = new PurchaseStore(':memory:');
   const calls = { payments: 0, executions: 0, settlements: 0, charges: [] };
   let blockResolve;
+  let verifyResolve;
   const pay = { config: { operator: { recipient: '11111111111111111111111111111111' } },
     async requirePayment(request, gate) {
       calls.payments++;
@@ -23,12 +24,13 @@ async function workspace(t, options = {}) {
       calls.gate = gate;
       if (options.paymentError) throw new Error('RPC failed at secret-internal-address');
       if (!request.headers.has('payment-signature')) return { status: 402, response: Response.json({ amount: gate.amount.baseUnits().toString(), scheme: 'upto' }, { status: 402 }) };
+      if (options.verifyBlock) await new Promise(resolve => { verifyResolve = resolve; });
       return { status: 200, payment: { scheme: 'upto' }, charge: { charge: amount => calls.charges.push(amount) },
         async settle() {
           calls.settlements++;
           if (options.settleError) throw new Error('RPC timeout');
           if (options.noReceipt) return {};
-          return { 'payment-response': Buffer.from(JSON.stringify({ success: true, transaction: tx })).toString('base64') };
+          return { 'x-payment-response': Buffer.from(JSON.stringify({ success: true, transaction: tx })).toString('base64') };
         } };
     } };
   const execute = async (quote, { onUpdate }) => {
@@ -50,7 +52,7 @@ async function workspace(t, options = {}) {
   const quote = async (body = requestBody, headers = {}) => { const response = await json('/v1/quotes', body, headers); assert.equal(response.status, 201); return response.json(); };
   const purchase = (id, key = 'request-key-123', extra = {}) => json(`/v1/purchases/${id}`, {}, {
     'Idempotency-Key': key, 'payment-signature': Buffer.from(JSON.stringify({ payload: { channelId: options.channel ?? randomUUID() } })).toString('base64'), ...extra });
-  return { base, store, calls, quote, purchase, json, unblock: () => blockResolve() };
+  return { base, store, calls, quote, purchase, json, unblock: () => blockResolve(), unblockVerification: () => verifyResolve() };
 }
 
 test('catalog offers digital work and separate spending permission', async t => {
@@ -234,3 +236,29 @@ test('malformed JSON, missing idempotency, and internal payment errors are expli
   assert.deepEqual(await failed.json(), { error: 'The service could not complete this request.' });
   assert.equal(w.calls.settlements, 0);
 });
+
+test('ambiguous dual payment proof headers are rejected before verification', async t => {
+  const w = await workspace(t);
+  const quote = await w.quote();
+  const response = await w.purchase(quote.id, 'dual-proof-key', { 'x-payment': 'different-proof' });
+  assert.equal(response.status, 400);
+  assert.equal(w.calls.payments, 0);
+});
+
+for (const conflict of ['key', 'channel']) {
+  test(`concurrent ${conflict} reuse is rejected before a second authorization`, async t => {
+    const w = await workspace(t, { verifyBlock: true, ...(conflict === 'channel' ? { channel: 'concurrent-channel-authorization' } : {}) });
+    const quote1 = await w.quote();
+    const quote2 = await w.quote();
+    const first = w.purchase(quote1.id);
+    for (let attempt = 0; attempt < 50 && !w.calls.payments; attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(w.calls.payments, 1);
+    const second = await w.purchase(quote2.id, conflict === 'key' ? 'request-key-123' : 'different-concurrent-key');
+    assert.equal(second.status, 409);
+    assert.equal(w.calls.payments, 1);
+    w.unblockVerification();
+    assert.equal((await first).status, 200);
+    assert.equal(w.calls.executions, 1);
+    assert.equal(w.calls.settlements, 1);
+  });
+}

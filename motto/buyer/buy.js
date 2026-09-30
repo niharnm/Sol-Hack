@@ -1,164 +1,198 @@
-// Buyer agent: Claude acting for a user it cannot see, with pay tools only.
-// It reads the desk's terms, decides whether a hold makes sense, pays under a
-// per-payment cap equal to the desk's highest published hold, and reports. Then this script checks the agent's report
-// against the desk's own hold log, so the outcome does not rest on the model's word.
-//
-//   npm run buyer -- --scenario low-battery
-//   npm run buyer -- "My laptop is at 12% and has a 3 hour render left"
-//   npm run buyer -- --desk https://motto.tail039d5c.ts.net --mainnet --scenario no-wifi
 import { spawn } from 'node:child_process';
+import { createPublicKey, randomUUID, verify } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { formatUsd, toBaseUnits } from '../src/settlement.js';
 
-// Situations the user's agent might be in. The agent never sees the device state;
-// the desk does. Each maps to one item, but the agent has to pick it from the terms.
-export const SCENARIOS = {
-  'research-brief': 'Your user is preparing a technical brief and needs three DOI-backed source records about retrieval augmented generation. Buy the research pack for query "retrieval augmented generation" if its terms fit. Inspect the delivered citations and report their titles and DOI links. Structural checks do not establish relevance or paper quality.',
-  'low-battery': 'Your user left their laptop running a long training job at a hackathon table. Their last message said the battery was getting low and they are away for an hour.',
-  'plugged-in': 'Your user\'s laptop is running a long job at a hackathon. They may or may not have plugged it in before walking off; you have no way to tell.',
-  'battery-pack': 'Your user is heading out with their laptop for a 2 hour train ride with no outlets and needs a job to keep running. They want at least 50% battery for it.',
-  'big-download': 'Your user asked you to download a 60 GB dataset onto their laptop tonight. You do not know how much free disk the laptop has.',
-  'no-wifi': 'Your user\'s laptop must upload results in the next ten minutes. They might have left the venue wifi range.',
-  'two-screens': 'Your user wants their laptop driving two external monitors for a trading-desk style setup and asked you to buy an adapter only if that is not already working. You cannot see their desk.',
-  'second-screen': 'Your user is about to give a demo and asked for an external monitor at their desk. They may already have one connected.',
-};
-
-const TOOLS = ['mcp__pay__curl', 'mcp__pay__get_balance', 'mcp__pay__list_catalog', 'mcp__pay__search_catalog', 'mcp__pay__get_catalog_entry'];
-const BLOCKED = ['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Agent', 'NotebookEdit', 'mcp__pay__topup', 'mcp__pay__create_skill'];
-
-// The buyer's per-payment cap, formatted like "$10.00": the desk's published max_hold_usd, or the highest
-// items[*].hold_usd when a desk does not publish it. Compared in USDC base units (6 decimals) so the
-// strings from /v1/terms are never rounded.
-export function highestCeiling(terms) {
-  const units = usd => { const [i, f = ''] = String(usd).split('.'); return BigInt(i) * 1_000_000n + BigInt(f.padEnd(6, '0')); };
-  const max = terms?.max_hold_usd
-    ? units(terms.max_hold_usd)
-    : Object.values(terms?.items ?? {}).filter(item => item?.hold_usd).reduce((m, { hold_usd }) => (units(hold_usd) > m ? units(hold_usd) : m), 0n);
-  if (max === 0n) throw new Error('the desk publishes neither max_hold_usd nor any hold_usd, so there is no ceiling to cap the buyer at');
-  const frac = (max % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '').padEnd(2, '0');
-  return `$${max / 1_000_000n}.${frac}`;
-}
-
-export function buyerPrompt(desk, situation, cap) {
-  return `You are a personal agent running in the cloud for your user. You cannot inspect their devices yourself.
-
-Situation: ${situation}
-
-A deposit desk rents real-world items to agents with refundable USDC holds. Its terms are free at ${desk}/v1/terms. Use your pay curl tool to read them, decide which item (if any) fits the situation, and rent it only if it makes sense for your user. Rentals are POST ${desk}/v1/rent/<item> with an optional JSON body of the item's params. Rent at most one item, at most once. Never pay more than ${cap}.
-
-When done, reply with 2 short lines for your user, then a last line that is only this JSON (decision is "held" whenever you opened a hold, whatever it settled to):
-{"decision":"held"|"skipped","item":<item or null>,"hold_id":<id or null>,"charged_usd":<string or null>,"returned_usd":<string or null>,"why":<one sentence>}`;
-}
-
-// The last {...} line in the agent's reply.
-export function parseReport(text) {
-  const line = String(text).trim().split('\n').reverse().find(l => l.trim().startsWith('{'));
-  if (!line) return undefined;
-  try {
-    return JSON.parse(line.trim().replace(/^```(json)?|```$/g, ''));
-  } catch {
-    return undefined;
+export function buyerOptions(args, env = process.env) {
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
+    desk: { type: 'string', default: env.DESK_URL ?? 'http://127.0.0.1:8787' },
+    query: { type: 'string' }, count: { type: 'string', default: '3' },
+    'max-spend': { type: 'string' }, mainnet: { type: 'boolean', default: false },
+    'required-term': { type: 'string', multiple: true },
+    'from-year': { type: 'string' }, 'to-year': { type: 'string' },
+  } });
+  if (!values['max-spend'] || values['max-spend'].length > 32 || !/^\d+(?:\.\d{1,6})?$/.test(values['max-spend']) || toBaseUnits(values['max-spend']) <= 0n) {
+    throw new Error('--max-spend is required and must be a positive USD decimal with at most six decimal places');
   }
+  if (values.query && positionals.length) throw new Error('Use --query or a positional query, not both');
+  const query = (values.query ?? positionals.join(' ')).trim();
+  if (query.length < 3 || query.length > 200 || /[\u0000-\u001f\u007f]/.test(query)) throw new Error('A query of 3 to 200 characters is required');
+  if (!/^\d+$/.test(values.count) || Number(values.count) < 1 || Number(values.count) > 20) {
+    throw new Error('--count must be an integer from 1 to 20');
+  }
+  const deskUrl = new URL(values.desk);
+  if (deskUrl.username || deskUrl.password || deskUrl.search || deskUrl.hash || deskUrl.pathname !== '/') {
+    throw new Error('--desk must be an HTTP(S) origin without credentials, a path, query, or fragment');
+  }
+  const local = ['127.0.0.1', 'localhost', '[::1]'].includes(deskUrl.hostname);
+  if (deskUrl.protocol !== 'https:' && !(local && deskUrl.protocol === 'http:')) {
+    throw new Error('--desk must use HTTPS, except for a local HTTP server');
+  }
+  if (!local && !env.MOTTO_API_KEY) throw new Error('Set MOTTO_API_KEY for a remote desk');
+  const terms = values['required-term'] ?? [];
+  if (terms.length > 5 || terms.some(term => !term.trim() || term.length > 100 || /[\u0000-\u001f\u007f]/.test(term))) {
+    throw new Error('--required-term accepts up to five nonempty terms of at most 100 characters');
+  }
+  const input = { query, count: Number(values.count), required_terms: [...new Set(terms.map(term => term.trim().toLowerCase()))] };
+  for (const option of ['from-year', 'to-year']) {
+    if (values[option] !== undefined) {
+      if (!/^\d{4}$/.test(values[option]) || Number(values[option]) < 1000) throw new Error(`--${option} must be a four-digit year`);
+      input[option.replace('-', '_')] = Number(values[option]);
+    }
+  }
+  if (input.from_year && input.to_year && input.from_year > input.to_year) throw new Error('--from-year must not exceed --to-year');
+  return { desk: deskUrl.origin, network: values.mainnet ? 'mainnet' : 'localnet',
+    maxSpend: formatUsd(toBaseUnits(values['max-spend'])), input, apiKey: env.MOTTO_API_KEY };
 }
 
-function runClaude(args, stdin, cwd) {
-  return new Promise((resolve, reject) => {
-    // Run from an empty directory with no user settings, so the buyer sees only this prompt and
-    // the pay tools, never the operator's own CLAUDE.md, memory or plugins.
-    const child = spawn('claude', args, { cwd, stdio: ['pipe', 'pipe', 'inherit'] });
-    let out = '';
-    child.stdout.setEncoding('utf8').on('data', c => (out += c));
-    child.on('error', reject);
-    child.on('exit', code => (code === 0 ? resolve(out) : reject(new Error(`claude exited with ${code}: ${out.slice(-500)}`))));
-    child.stdin.end(stdin);
-  });
+export function checkQuote(quote, options, now = Date.now()) {
+  if (!quote || typeof quote.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(quote.id)) throw new Error('Desk returned an invalid quote ID');
+  if (quote.service !== 'research' || quote.currency !== 'USDC') throw new Error('Desk returned the wrong service or currency');
+  if (typeof quote.ceiling_usd !== 'string' || quote.ceiling_usd.length > 32 || !/^\d+(?:\.\d{1,6})?$/.test(quote.ceiling_usd) || toBaseUnits(quote.ceiling_usd) <= 0n || toBaseUnits(quote.ceiling_usd) > toBaseUnits(options.maxSpend)) {
+    throw new Error('Quote exceeds your spending limit or has an invalid ceiling; no payment attempted');
+  }
+  if (typeof quote.max_spend_usd !== 'string' || quote.max_spend_usd.length > 32 || !/^\d+(?:\.\d{1,6})?$/.test(quote.max_spend_usd) || toBaseUnits(quote.max_spend_usd) !== toBaseUnits(options.maxSpend)) {
+    throw new Error('Quote changed your spending limit; no payment attempted');
+  }
+  for (const field of ['query', 'count', 'required_terms', 'from_year', 'to_year']) {
+    if (JSON.stringify(quote.input?.[field]) !== JSON.stringify(options.input[field])) {
+      throw new Error(`Quote changed ${field}; no payment attempted`);
+    }
+  }
+  if (!Number.isFinite(Date.parse(quote.expires_at)) || Date.parse(quote.expires_at) <= now) throw new Error('Quote expired; no payment attempted');
+  return quote;
 }
 
-async function main() {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      desk: { type: 'string', default: process.env.DESK_URL ?? 'http://127.0.0.1:8787' },
-      scenario: { type: 'string' },
-      mainnet: { type: 'boolean', default: false },
-      model: { type: 'string', default: 'sonnet' },
-      list: { type: 'boolean', default: false },
-    },
-  });
-  if (values.list) {
-    for (const [name, text] of Object.entries(SCENARIOS)) console.log(`${name.padEnd(14)} ${text}`);
-    return;
-  }
-  const situation = positionals.join(' ') || SCENARIOS[values.scenario ?? 'research-brief'];
-  if (!situation) throw new Error(`unknown scenario "${values.scenario}". Try --list.`);
-  const desk = values.desk.replace(/\/$/, '');
-
-  // Fail fast with a clear message if the desk is not up.
-  const terms = await fetch(`${desk}/v1/terms`).then(r => r.json()).catch(() => undefined);
-  if (!terms?.items) throw new Error(`no desk at ${desk} (GET /v1/terms failed)`);
-  const network = values.mainnet ? 'mainnet' : 'localnet';
-  if (terms.network !== network && !(network === 'mainnet' && terms.network === 'mainnet-beta')) {
-    throw new Error(`desk is on ${terms.network}, buyer is on ${network}. Pass --mainnet only for a mainnet desk.`);
-  }
-
-  // The cap is the highest hold the desk publishes, read from its terms rather than typed here.
-  const cap = highestCeiling(terms);
-
-  // On mainnet the cap is enforced by the pay MCP server, not by the prompt: this desk's origin
-  // only, the desk's highest hold per payment. pay 0.29 rejects every permission rule in the sandbox
-  // ("invalid Solana network" for Surfpool's chain id), so the sandbox runs without the cap and says so.
+export async function payPurchase(options, quote, { spawnPay = spawn, timeoutMs = 120_000, onRequest = () => {} } = {}) {
+  checkQuote(quote, options);
   const dir = mkdtempSync(join(tmpdir(), 'motto-buyer-'));
+  const permissions = join(dir, 'permissions.yml');
+  writeFileSync(permissions, `origins: [${JSON.stringify(options.desk)}]\nnetworks: [${options.network}]\nmax_payment: "$${quote.ceiling_usd}"\nallow_any_asset: false\n`, { mode: 0o600 });
   try {
-    const payArgs = [values.mainnet ? '--mainnet' : '--sandbox', 'mcp'];
-    if (values.mainnet) {
-      const permissions = join(dir, 'permissions.yml');
-      writeFileSync(permissions, `origins: [${new URL(desk).origin}]\nnetworks: [mainnet]\nmax_payment: "${cap}"\nallow_any_asset: false\n`);
-      payArgs.push('--permissions', permissions);
-    }
-    const mcp = join(dir, 'mcp.json');
-    writeFileSync(mcp, JSON.stringify({ mcpServers: { pay: { command: 'pay', args: payArgs } } }));
-
-    const capNote = values.mainnet ? `${cap} cap enforced by pay` : `sandbox: no pay cap, test funds, prompt cap ${cap}`;
-    console.log(`Buyer (${values.model}, pay tools only, ${capNote}) -> ${desk}`);
-    console.log(`Situation: ${situation}\n`);
-    const started = Date.now();
-    const raw = await runClaude(
-      ['-p', '--model', values.model, '--setting-sources', 'local', '--mcp-config', mcp, '--strict-mcp-config', '--allowedTools', TOOLS.join(','), '--disallowedTools', BLOCKED.join(','), '--output-format', 'json'],
-      buyerPrompt(desk, situation, cap),
-      dir,
-    );
-    const result = JSON.parse(raw);
-    const text = result.result ?? '';
-    console.log(text.split('\n').filter(l => !l.trim().startsWith('{')).join('\n').trim());
-    const report = parseReport(text);
-    console.log(`\nAgent report: ${JSON.stringify(report ?? 'none')}`);
-    console.log(`Time ${((Date.now() - started) / 1000).toFixed(1)}s, model cost $${Number(result.total_cost_usd ?? 0).toFixed(4)}`);
-
-    // Cross-check against the desk: the hold log is the source of truth, not the model.
-    if (report?.hold_id) {
-      const hold = await fetch(`${desk}/v1/holds/${encodeURIComponent(report.hold_id)}`).then(r => (r.ok ? r.json() : undefined));
-      if (!hold) {
-        console.log(`Desk check: FAILED, the desk has no hold ${report.hold_id}`);
-        process.exitCode = 1;
-      } else {
-        const match = hold.item === report.item && hold.charged_usd === report.charged_usd && hold.returned_usd === report.returned_usd;
-        console.log(`Desk check: ${match ? 'verified' : 'MISMATCH'}. Desk says ${hold.item} ${hold.status}, charged $${hold.charged_usd}, returned $${hold.returned_usd} (${hold.detail}).`);
-        if (!match) process.exitCode = 1;
-      }
-    } else {
-      console.log('Desk check: no hold opened.');
-    }
+    const idempotencyKey = randomUUID();
+    onRequest({ quote_id: quote.id, idempotency_key: idempotencyKey, network: options.network, max_spend_usd: options.maxSpend, ceiling_usd: quote.ceiling_usd });
+    return await new Promise((resolve, reject) => {
+      const child = spawnPay('pay', [options.network === 'mainnet' ? '--mainnet' : '--sandbox', 'mcp', '--permissions', permissions], { stdio: ['pipe', 'pipe', 'ignore'] });
+      let buffer = '';
+      let done = false;
+      const finish = (error, result) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        child.stdin.destroy();
+        child.stdout.destroy();
+        if (child.kill()) {
+          const forceStop = setTimeout(() => {
+            if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL');
+          }, 1000);
+          forceStop.unref();
+          child.once('exit', () => clearTimeout(forceStop));
+        }
+        if (error) reject(error); else resolve(result);
+      };
+      const timer = setTimeout(() => finish(new Error('Pay timed out. Check the purchase log before attempting another purchase.')), timeoutMs);
+      const send = message => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+      child.on('error', () => finish(new Error('Could not start Pay. Install the Pay.sh CLI and verify pay --version.')));
+      child.stdin.on('error', () => finish(new Error('Pay closed its input before completing the purchase.')));
+      child.on('exit', () => finish(new Error('Pay exited before completing the purchase. Verify your CLI supports the origin, network, and max_payment permission policy. No uncapped fallback is allowed.')));
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', chunk => {
+        buffer += chunk;
+        if (buffer.length > 10_000_000) return finish(new Error('Pay response exceeded the buyer response limit'));
+        for (;;) {
+          const end = buffer.indexOf('\n');
+          if (end < 0 || done) break;
+          const line = buffer.slice(0, end);
+          buffer = buffer.slice(end + 1);
+          let message;
+          try { message = JSON.parse(line); } catch { return finish(new Error('Pay returned an invalid MCP response')); }
+          if (message.id !== 1 && message.id !== 2) continue;
+          if (message.error) return finish(new Error('Pay rejected the request. Verify your permission policy and account before retrying.'));
+          if (message.id === 1) {
+            send({ method: 'notifications/initialized' });
+            send({ id: 2, method: 'tools/call', params: { name: 'curl', arguments: {
+              url: `${options.desk}/v1/purchases/${encodeURIComponent(quote.id)}`, method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+                ...(options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {}) }, body: {},
+            } } });
+          } else {
+            if (message.result?.isError) return finish(new Error('Pay refused or failed the purchase. Pay.sh 0.29 may reject sandbox permission policies. Use a CLI with supported capped sandbox payments; never retry without the cap. Check the purchase log before another attempt.'));
+            try {
+              const content = message.result?.content?.filter(part => part.type === 'text').map(part => part.text).join('\n');
+              const result = JSON.parse(content);
+              if (!result.id || !result.status) throw new Error('Missing purchase record');
+              finish(undefined, result);
+            } catch { finish(new Error('Pay did not return a purchase record. Check the desk purchase log before another attempt.')); }
+          }
+        }
+      });
+      send({ id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'motto-buyer', version: '1.0.0' } } });
+    });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
+export function checkPurchase(purchase, quote, options, signingKey) {
+  const statuses = ['fetching', 'validating', 'settling', 'paid', 'refunded', 'settle_failed', 'interrupted'];
+  if (!purchase || typeof purchase.id !== 'string' || !statuses.includes(purchase.status) || purchase.quote_id !== quote.id || purchase.service !== quote.service || purchase.currency !== 'USDC') {
+    throw new Error('Payment response does not match the accepted quote. Inspect purchase history before retrying.');
+  }
+  if (purchase.network !== options.network && !(options.network === 'mainnet' && purchase.network === 'mainnet-beta')) throw new Error('Purchase network differs from the accepted network');
+  for (const field of ['max_spend_usd', 'ceiling_usd']) {
+    if (typeof purchase[field] !== 'string' || purchase[field].length > 32 || !/^\d+(?:\.\d{1,6})?$/.test(purchase[field]) || toBaseUnits(purchase[field]) !== toBaseUnits(quote[field])) {
+      throw new Error('Purchase amount differs from the accepted quote. Inspect purchase history before retrying.');
+    }
+  }
+  const terminal = ['paid', 'refunded'].includes(purchase.status);
+  if (terminal) {
+    const charged = purchase.status === 'paid' ? quote.ceiling_usd : '0.00';
+    const returned = purchase.status === 'refunded' ? quote.ceiling_usd : '0.00';
+    if (purchase.charged_usd !== charged || purchase.returned_usd !== returned || typeof purchase.settlement_tx !== 'string' || !/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(purchase.settlement_tx)) throw new Error('Purchase has inconsistent settlement amounts or no settlement transaction');
+  } else if (purchase.charged_usd !== null || purchase.returned_usd !== null) throw new Error('Unconfirmed purchase must not report settled amounts');
+  if (terminal || purchase.reading) {
+    const reading = purchase.reading;
+    if (!reading || reading.purchase_id !== purchase.id || reading.quote_id !== quote.id || reading.service !== quote.service || (quote.quote_hash && reading.quote_hash !== quote.quote_hash) || reading.devicePublicKey !== signingKey || typeof reading.signature !== 'string' || !/^[0-9a-f]{128}$/i.test(reading.signature)) throw new Error('Receipt does not match the accepted quote or published signer');
+    const { signature, devicePublicKey, ...payload } = reading;
+    const key = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(signingKey, 'hex')]), format: 'der', type: 'spki' });
+    if (!verify(null, Buffer.from(JSON.stringify(payload)), key, Buffer.from(signature, 'hex'))) throw new Error('Receipt signature is invalid');
+    if (terminal && (reading.charge_usd !== purchase.charged_usd || (purchase.status === 'paid' && (reading.outcome !== 'delivered' || reading.checks?.passed !== true || reading.units_delivered !== quote.input.count)))) throw new Error('Receipt acceptance does not match the settlement');
+  }
+  return purchase;
+}
+
+export async function buy(options, { fetcher = fetch, purchase = payPurchase, onRequest = () => {} } = {}) {
+  const headers = options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {};
+  const request = async (path, init) => {
+    const response = await fetcher(`${options.desk}${path}`, { ...init, redirect: 'error', signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`Desk request failed (${response.status}) at ${path}; no payment attempted`);
+    return response.json();
+  };
+  const services = await request('/v1/services');
+  if (services.network !== options.network && !(options.network === 'mainnet' && services.network === 'mainnet-beta')) {
+    throw new Error(`Desk network differs from buyer ${options.network}; no payment attempted`);
+  }
+  if (!services.services?.research) throw new Error('Desk does not offer the research service');
+  if (typeof services.signing_public_key !== 'string' || !/^[0-9a-f]{64}$/i.test(services.signing_public_key)) throw new Error('Desk did not publish a valid receipt signing key');
+  const quote = checkQuote(await request('/v1/quotes', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service: 'research', input: options.input, max_spend_usd: options.maxSpend }) }), options);
+  const result = checkPurchase(await purchase(options, quote, { onRequest }), quote, options, services.signing_public_key);
+  return { quote, purchase: result };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(error => {
-    console.error(error.message);
-    process.exit(1);
-  });
+  try {
+    const result = await buy(buyerOptions(process.argv.slice(2)), { onRequest: request => console.error(JSON.stringify({ payment_request: request })) });
+    console.log(JSON.stringify(result, null, 2));
+    if (!['paid', 'refunded'].includes(result.purchase.status)) process.exitCode = 1;
+  } catch (error) {
+    // Do not echo subprocess logs, request headers, or fetch errors containing credentials.
+    const message = error.message.replaceAll(process.env.MOTTO_API_KEY || '\0', '[redacted]');
+    console.error(message);
+    process.exitCode = 1;
+  }
 }
