@@ -73,6 +73,25 @@ npm install
 npm start
 ```
 
+The first start creates a 256-bit administrator token automatically. Motto stores the token at
+`data/secrets/admin-token` with file mode `0600`; the credential record contains only its SHA-256
+digest. Starting Motto again reuses the same credential.
+
+To pair a remote browser with the private purchase console, create a five-minute, single-use link:
+
+```bash
+npm run pair -- --url https://your-motto-host --open
+```
+
+The link places the pairing code in the URL fragment. The console removes that fragment before its
+first request, exchanges the code for an HttpOnly same-site session cookie, and never stores the
+administrator token in browser-accessible storage. Run `npm run pair` again to pair another browser.
+Use `npm run admin:status` to inspect non-secret credential and session counts.
+
+Containers may supply either `MOTTO_ADMIN_TOKEN` or `MOTTO_ADMIN_TOKEN_FILE`. Do not set both. There
+is no package `postinstall` script because dependency installation may run under the wrong account or
+inside an image build.
+
 Inspect the free terms and request the active offer:
 
 ```bash
@@ -85,6 +104,29 @@ curl -i -X POST http://127.0.0.1:8787/v1/buy/research \
 
 The unpaid purchase call returns a `402` x402 `upto` offer. A payment-aware client authorizes the
 hold and retries the same request.
+
+## Pay CLI discovery
+
+Pay and Motto have separate setup responsibilities. `npx @solana/pay claude` creates or opens the
+buyer's Pay wallet and gives Claude Pay's provider tools. Motto's setup command creates credentials
+for the operator who runs a Motto service.
+
+This is valid Pay CLI syntax:
+
+```bash
+npx -y @solana/pay@1.0.26 --sandbox claude \
+  'Use Motto at https://your-motto-host to buy one research pack about drinking-water delivery systems. Spend at most $1.00.'
+```
+
+The explicit URL is required until the Motto entry in the public Pay catalog is accepted and
+published. [Catalog PR #280](https://github.com/solana-foundation/pay-skills/pull/280) is open, so a
+fresh `npx @solana/pay claude` session cannot currently discover Motto by name. After publication,
+Pay can present Motto as a matching provider, but the agent still decides which provider fits the
+request.
+
+Do not use a physical-product prompt such as “buy some water” as a working Motto example yet. The
+current service has no seller connection, inventory reservation, recipient workflow, external order
+ID, or signed physical delivery. Research remains the only verified end-to-end offer.
 
 Useful checks:
 
@@ -125,9 +167,9 @@ before using it.
 Other routes used by the dashboard or operator are internal and are not catalog offers.
 
 Detailed hold records and the live event stream are private. They are available from loopback for
-the on-device console, or remotely with `Authorization: Bearer <MOTTO_ADMIN_TOKEN>`. Public clients
-can read aggregate status counts at `GET /v1/public/stats`, which does not return payer addresses,
-queries, idempotency hashes, signed readings, or settlement records.
+the on-device console, through a paired browser session, or with a bearer token read from the private
+token file. Public clients can read aggregate status counts at `GET /v1/public/stats`, which does not
+return payer addresses, queries, idempotency hashes, signed readings, or settlement records.
 
 ## Signed result
 
