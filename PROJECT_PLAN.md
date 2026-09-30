@@ -164,7 +164,12 @@ Addresses: USDC mainnet `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`, devnet
 ## 9. Buyer agent
 
 - Build and test: `pay --sandbox curl -X POST <url>/v1/rent/charger`.
-- Demo: `pay --sandbox claude "<task>"`, final run with mainnet. Claude reads `/v1/terms`, reasons about
+- Demo: Claude runs as a remote agent with pay tools only (no shell), so it cannot check the device
+  itself and relies on the desk. Exact command in `deposit-desk/README.md`. Verified: Claude read the
+  terms, held $1, got the signed reading, $0.99 came back, and called the hold "cheap insurance".
+  Without the tool limit, Claude ran `pmset` itself and skipped renting, which is why the buyer is
+  positioned as a cloud agent acting for a user's device.
+- Final run with mainnet. Claude reads `/v1/terms`, reasons about
   the $1 hold and the refund rule, pays, reports the outcome.
 - Discovery: listing in the Pay.sh catalog (`pay catalog scaffold`, `pay catalog check`, PR to
   `solana-foundation/pay-skills`) so Claude finds it with `pay skills search`. Needs a production https

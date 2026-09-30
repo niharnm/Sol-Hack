@@ -28,10 +28,12 @@ pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger
 pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot
 ```
 
-Let Claude rent on its own:
+Let Claude rent on its own, as a remote agent that cannot inspect the device (pay tools only, no shell):
 
 ```bash
-pay --sandbox claude "You're running a long job on this laptop. Terms are at http://127.0.0.1:8787/v1/terms. Make sure you have power, and only pay what you need."
+echo "You are a personal agent running in the cloud for your user. Your user's laptop is at a hackathon and has a long job running; you cannot inspect the laptop yourself. A deposit desk sells refundable charger holds for that device; terms are at http://127.0.0.1:8787/v1/terms. Use your pay tools to read the terms and, if it makes sense, rent. Report in 3 short lines: what you paid, what came back, and why." \
+  | pay --sandbox claude -p --allowedTools "mcp__pay__*" \
+      --disallowedTools "Bash,Read,Glob,Grep,Write,Edit,WebFetch,WebSearch,Agent,NotebookEdit"
 ```
 
 ## Endpoints

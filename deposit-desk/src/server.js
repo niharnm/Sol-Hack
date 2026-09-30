@@ -25,7 +25,7 @@ const ITEMS = {
     check: 'Is the device already drawing AC power?',
     rules: {
       already_handled: 'Device already on power: charge the $0.01 check fee, $0.99 returned.',
-      delivered: `Device on battery, power delivered within ${CHARGER_WAIT_MS / 1000}s: rental kept, $1.00 charged.`,
+      delivered: 'Device on battery, power delivered within the wait window: rental kept, $1.00 charged.',
       not_delivered: 'Power never arrived: charge the $0.01 check fee, $0.99 returned.',
     },
   },
@@ -99,6 +99,8 @@ app.get('/v1/terms', (_req, res) => {
   res.json({
     service: 'Deposit Desk',
     summary: 'Refundable holds for agents renting real-world things. You only pay if the need is real.',
+    why_hold:
+      'You are acting for a user on a device you cannot inspect. The desk runs the check on the device itself and returns a device-signed reading. Hold $1 when your user may need the item: if the need is already handled you get $0.99 back, if it is real the rental starts immediately.',
     network: NETWORK,
     scheme: 'x402 upto: you authorize the hold, the desk settles only what is owed, the rest returns to you.',
     devicePublicKey,
