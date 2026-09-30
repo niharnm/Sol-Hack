@@ -1,271 +1,172 @@
-# Motto: 3 minute demo script
+# Motto: 3 minute virtual-service demo
 
-Seven beats, 3:00 total. The live demo runs in Pay.sh's sandbox (test USDC). Nihar runs the product.
-Nithin narrates. Sources: `PROJECT_PLAN.md` sections 11, 12, 13, 14 and 20, `prep/PITCH_AND_DEMO.md`,
-`motto/README.md`.
+Seven beats, 3:00 total. The live demo uses Pay.sh's sandbox and test USDC. Nihar runs the product. Nithin narrates.
+
+## Product boundary
+
+Motto is the middleman for supported virtual purchases. A buyer agent sends an intent and budget. Motto routes the request to the supported provider, validates the returned result, coordinates settlement, and returns the result with a signed receipt.
+
+Motto is not a general device API. A request such as "charge my computer" is unsupported because the software cannot connect a cable, inspect the computer, or confirm that physical work happened. Unsupported physical requests must not create a payment.
 
 ## Who does what
 
 | Who | Does |
-|---|---|
-| Nihar | Runs every command on the demo laptop. Unplugs the charger cable and hands it to the volunteer. Advances the slides. |
-| Nithin | Narrates every beat, asks the room, briefs the volunteer, watches the clock. |
-| Volunteer (audience) | Plugs the cable back into the laptop in beat 3, and only when Nithin says so. |
+| --- | --- |
+| Nihar | Runs the buyer or direct purchase command and advances the slides. |
+| Nithin | Narrates each beat and watches the clock. |
+| Motto | Connects buyer intent to the supported research provider, validates the result, and returns the payment outcome and signed receipt. |
 
 ## Timeline
 
 | Time | Beat | Screen | Length |
-|---|---|---|---|
-| 0:00 | 1. Hook | Slide 1, then slide 2 | 15s |
-| 0:15 | 2. Refund | Terminal (left) and dashboard (right) | 35s |
-| 0:50 | 3. Keep | Terminal and dashboard | 40s |
-| 1:30 | 4. Second check | Terminal and dashboard | 20s |
-| 1:50 | 5. Benchmark | Slide 3 (or the dashboard benchmark chart) | 25s |
-| 2:15 | 6. Why middleman, why Solana | Slide 4 | 25s |
-| 2:40 | 7. Close | Dashboard fullscreen, live counter | 20s |
+| --- | --- | --- | --- |
+| 0:00 | 1. Boundary | Slide 1 | 20s |
+| 0:20 | 2. Buyer intent | Terminal and console | 25s |
+| 0:45 | 3. Provider result | Console | 35s |
+| 1:20 | 4. Validation | Console inspector | 30s |
+| 1:50 | 5. Payment and receipt | Console inspector | 30s |
+| 2:20 | 6. Why the middleman | Slide 4 | 25s |
+| 2:45 | 7. Close | Console fullscreen | 15s |
 
 ## Stage setup
 
-- Laptop A is the demo laptop and the desk runs on it, because the checks read this laptop. Charger
-  cable within reach. Laptop starts on AC power.
-- Screen: left half Claude terminal, right half dashboard (`http://127.0.0.1:8787/`). Put the slides in
-  their own fullscreen window (`open slides/index.html` from the repo root) so switching is one
-  keystroke. Slide keys: arrow keys or click, `f` for fullscreen.
-- Phone hotspot on. Backup video cued in a browser tab (TODO before demo: record the backup video and
-  cue it). Sandbox only: there is no Explorer tab. `node motto/proof/verify.mjs` output in a
-  terminal tab if a judge asks for proof.
-- Sound: click the Sound button on the dashboard until it reads Sound on, then test the volume.
-  Browsers block audio until a click, so click the page once after any reload. Kept and Refunded each
-  play their own sound.
-- Model warmed with one call right before walking up: run the buyer command once (below).
-- Volunteer picked and briefed before the demo starts.
+- Start the sandbox desk from the repository root:
+
+  ```bash
+  cd motto
+  NETWORK=localnet npm start
+  ```
+
+- Open http://127.0.0.1:8787 beside a terminal.
+- Keep `node demo/verify-proof.mjs` ready in another terminal tab.
+- Run one preflight purchase immediately before the demo. The console should show a completed research purchase with three citations.
+- If the model runner is unavailable, use the direct sandbox command and state that the model is not in that fallback path.
 
 ## Commands
 
-Start the desk from the repo root. Start it while the laptop is on the venue wifi so the hotspot check
-compares against the real venue gateway, then join the phone hotspot:
+Check the desk and its published research terms:
+
+```bash
+curl -s http://127.0.0.1:8787/v1/terms
+```
+
+Run the Claude buyer with Pay.sh tools only:
+
+```bash
+node demo/run-agent.mjs
+```
+
+Direct sandbox fallback:
+
+```bash
+npx --yes --package @solana/pay pay --sandbox curl -sS \
+  -X POST http://127.0.0.1:8787/v1/buy/research \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"retrieval augmented generation"}'
+```
+
+Do not retry a failed or timed-out paid request until the console and hold log confirm that no purchase is still pending. A retry can open another hold.
+
+Optional Devnet path:
 
 ```bash
 cd motto
-VENUE_GATEWAY="$(route -n get default | awk '/gateway:/{print $2}')" npm start     # sandbox, http://127.0.0.1:8787
+npm start
+npm run buy:devnet -- "retrieval augmented generation"
 ```
 
-Pre-flight, with the laptop on AC power:
-
-```bash
-curl -s http://127.0.0.1:8787/v1/terms | head -c 300
-pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger     # expect refunded, $2.95 back
-pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot     # phone hotspot: expect kept. Venue wifi: expect refunded
-```
-
-Sandbox quirk measured on 2026-09-30: about 1 in 10 to 15 sandbox paid calls fails inside pay-kit's
-channel broadcast against the sandbox RPC (the desk logs `payment rejected: invalid_upto_svm_channel_broadcast`),
-usually as a 30 second stall followed by `Server returned 402 again after payment` or a `settle_failed`
-card on the dashboard. The retry settles in about 4 seconds. So run the pre-flight holds above right
-before walking up, and if a hold on stage takes longer than 15 seconds, say "sandbox is warming up"
-and rerun the same command.
-
-Test holds show up on the dashboard counters, and the hold log (`motto/data/holds.jsonl`) is
-reloaded when the desk starts, so the counters survive a restart. That is fine: at the close read the
-live numbers off the screen, never a number you did not see.
-
-The buyer command (Claude as a remote agent, pay tools only, no shell). Paste it once, then recall it
-with the up arrow for beat 3:
-
-```bash
-echo "You are a personal agent running in the cloud for your user. Your user's laptop is at a hackathon and has a long job running; you cannot inspect the laptop yourself. A deposit desk sells refundable charger holds for that device; terms are at http://127.0.0.1:8787/v1/terms. Use your pay tools to read the terms and, if it makes sense, rent. Report in 3 short lines: what you paid, what came back, and why." \
-  | pay --sandbox claude -p --allowedTools "mcp__pay__*" \
-      --disallowedTools "Bash,Read,Glob,Grep,Write,Edit,WebFetch,WebSearch,Agent,NotebookEdit"
-```
-
-Direct fallback and beat 4 (same desk, same money path, no model in the loop):
-
-```bash
-pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger
-pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot
-```
-
-Optional public URL, if a judge or the submission needs it:
-
-```bash
-tailscale funnel --bg 8787    # permanent: https://motto.tail039d5c.ts.net
-# fallback, temporary URL: cloudflared tunnel --url http://127.0.0.1:8787
-```
+The default server network is Devnet. The Devnet buyer uses a generated test wallet and requires test USDC. Follow the funding message printed by the CLI. Devnet test tokens are not mainnet funds.
 
 ## The script
 
-### Beat 1. Hook (0:00 to 0:15)
+### Beat 1. Boundary, 0:00 to 0:20
 
-Screen: slide 1. Press right to slide 2 (the loop) for the last 5 seconds.
+Screen: slide 1.
 
-Nithin: "An agent authorizes the price. We verify delivery, settle what’s owed, and return the rest."
+Nithin: "Motto helps agents buy supported virtual results. It sits between buyer intent, a provider, payment, validation, and a signed receipt. It does not claim that software can perform a physical action."
 
-Nihar: nothing to run. Laptop on AC power, desk running.
+Nihar: no command. Keep the console visible.
 
-### Beat 2. Refund (0:15 to 0:50)
+### Beat 2. Buyer intent, 0:20 to 0:45
 
-Screen: terminal and dashboard.
+Screen: terminal and console.
 
-Nithin, to the room: "Is this laptop plugged in? Should the agent pay?" Take a second for answers.
-"Our buyer is Claude, a cloud agent working for the user. It has pay tools only, no shell, so it cannot
-look at the laptop."
+Nithin: "The buyer needs three DOI-backed sources about retrieval augmented generation. It reads the free terms and authorizes no more than the published research ceiling."
 
-Nihar runs the buyer command.
+Nihar runs `node demo/run-agent.mjs`.
 
-Expect: the big word on the dashboard goes Checking, then Refunded (green), with the refund sound.
-Claude reports three short lines: what it paid, what came back, why.
+Expect: the agent reads `GET /v1/terms` and makes one paid `POST /v1/buy/research`. The console shows the authorization and research query.
 
-Nithin: "The desk checked the laptop. It is already on power. Five cents for the check, $2.95 back.
-Nobody clicked anything."
+If Claude cannot start, run the direct fallback. Say: "This is the same paid Motto endpoint without the model in the loop."
 
-If Claude has not placed the hold by about 0:35, Ctrl-C and run the direct charger command instead.
+### Beat 3. Provider result, 0:45 to 1:20
 
-### Beat 3. Keep (0:50 to 1:30)
+Screen: Purchased deliverable.
 
-Physical steps: Nihar unplugs the cable (the laptop is now on battery) and hands the cable to the
-volunteer. The volunteer stands at the laptop's port and does NOT plug in yet.
+Nithin: "Motto passes the request to the supported research provider. Crossref returns live citation metadata. Motto packages the response for the buyer."
 
-Nithin, to the volunteer: "When the dashboard says the device is on battery and waiting for power,
-plug it in."
+Nihar opens one DOI link and reads one title from the console.
 
-Nihar runs the buyer command again (up arrow).
+Do not claim that Motto read the papers or proved their quality. The provider supplies metadata, not full text.
 
-Expect: the big word says Checking and the line under it says "Device is on battery. Waiting for power
-to arrive". The desk waits up to 30 seconds (`CHARGER_WAIT_MS`, default 30000). The volunteer plugs in,
-the next check reads AC power, and the word flips to Kept (amber), with the keep sound.
+### Beat 4. Validation, 1:20 to 1:50
 
-Nithin: "Now the need is real. The laptop was on battery, power arrived, so the desk keeps the $3.00."
+Screen: Under the hood, then Provider & validation.
 
-Edge cases:
-- Nobody plugs in within 30 seconds: the desk charges the $0.05 fee and returns $2.95, because power
-  never arrived. Narrate it as the third outcome: "If the power never comes, the agent pays five cents for
-  the check, nothing for the charger."
-- The volunteer plugs in too early, before the desk reads the battery: the desk sees AC power and
-  refunds. Say "that is the first case again" and move on to beat 4.
+Nithin: "Before settlement, Motto checks the published contract: three records, three distinct DOI identifiers, and a nonempty title for each record. These are structural checks. They do not prove semantic relevance or paper quality."
 
-### Beat 4. Second check (1:30 to 1:50)
+Nihar shows the validation fields and the delivered citations.
 
-Nihar runs the direct hotspot command.
+### Beat 5. Payment and receipt, 1:50 to 2:20
 
-Setup: the laptop is on the phone hotspot (joined before the demo). The desk was started on the venue
-wifi with `VENUE_GATEWAY` set to that wifi's gateway, so the check now reads a different default
-gateway: device off the venue network, need is real, $8.00 kept. The word goes Kept (amber).
+Screen: Payment summary and Signed receipt.
 
-Nithin: "Same desk, different check: is this laptop on the venue network? It is on my phone's hotspot,
-so the need is real and the $8.00 day pass is kept. The price changes per item. The rules do not."
+Nithin: "If the structural checks pass, Motto settles the service price. If the provider fails or returns an incomplete pack, Motto returns the authorization. The result and checks are signed together."
 
-Variant: if the laptop is on the venue wifi, the same command is refunded ($0.10 fee, $7.90 back).
-Narrate whichever happens.
+Nihar selects Verify signature. If asked for terminal proof, run:
 
-### Beat 5. Benchmark (1:50 to 2:15)
+```bash
+node demo/verify-proof.mjs
+```
 
-Screen: slide 3, or click the Benchmark button in the dashboard header to jump to its benchmark
-chart. Every number comes from `motto/bench/results.json`.
+On localnet, this verifies the Ed25519 receipt signature and the payment arithmetic. It does not independently confirm a public-chain transaction. On Devnet, it also asks the public Devnet RPC about the reported settlement signature.
 
-Nithin: "Fifty generated scenarios, the same for every run. Fable 5.1 alone wasted seventy-seven dollars.
-Sonnet 5 alone wasted forty-six and missed eighteen real needs. Sonnet 5 with the desk wasted a dollar
-forty and missed none. A cheaper model with Motto beat the frontier model on wasted spend.
-Scenarios are generated and device states are simulated; the live desk reads the real device."
-
-### Beat 6. Why the middleman, why Solana (2:15 to 2:40)
+### Beat 6. Why the middleman, 2:20 to 2:45
 
 Screen: slide 4.
 
-Nithin, three lines:
-1. "Every market of strangers needed a middleman who holds the money: PayPal for eBay, Stripe between
-   businesses and banks, OpenRouter between apps and model providers."
-2. "Pay.sh sits between agents and paid APIs, and agents are the next strangers spending money. Someone
-   has to hold the deposit."
-3. "A few-cent check only works when a settlement costs a fraction of a cent. That is why Solana."
+Nithin:
 
-Do not quote funding, revenue or usage figures about any company. Any such number must be looked up and
-cited first (`PROJECT_PLAN.md` section 13).
+1. "The buyer agent should not need a separate account and integration for every virtual provider."
+2. "Motto accepts the buyer's intent and budget, calls the supported provider, checks the result, and returns one receipt."
+3. "Payment does not make an impossible request possible. If the service is unsupported or physical, Motto must reject it before charging."
 
-### Beat 7. Close (2:40 to 3:00)
+### Beat 7. Close, 2:45 to 3:00
 
-Screen: dashboard, press `f` for fullscreen. End on the live counter.
+Screen: console fullscreen, ending on the sources and receipt.
 
-Nithin: "Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars
-of SOL for network fees. Every new check is a new line in the catalog: locker, parking, battery swap.
-The desk has settled [N] holds and returned [$X] to agents today. The price changes per item. The
-rules do not."
+Nithin: "Buyer intent in. Supported virtual result, payment outcome, and signed receipt out. That is Motto's role as the middleman."
 
-Read [N] and [$X] off the counters on screen. Do not say mainnet has been run: we stayed in the
-sandbox on purpose, and the mainnet path has never been exercised.
-
-The plan says to close on "listed on Pay.sh". Say that only if the catalog PR is merged. If it is
-open say "submitted to the Pay.sh catalog". Otherwise say "ready for the Pay.sh catalog"
-(PR: https://github.com/solana-foundation/pay-skills/pull/280).
+Do not say the sandbox run is mainnet. Do not describe test USDC as real money. Do not say the receipt proves the sources are true or relevant.
 
 ## Backups
 
 | If | Then |
-|---|---|
-| Claude is slow or errors | Ctrl-C and run the direct charger command. Say: "Same desk, same money path." |
-| Venue wifi is down or blocks the tunnel | Use the phone hotspot. The desk and the dashboard are local. |
-| The volunteer is late or early | See the beat 3 edge cases. Both outcomes are real desk outcomes. |
-| Sound fails | Check the Sound button, click the page once, or say the state out loud: "kept", "refunded". |
-| Dashboard stops updating | Reload `http://127.0.0.1:8787/`. |
-| Desk crashed | Restart it with the start command above, then reload the dashboard. The hold log is reloaded, so the counters survive. |
-| Nothing works | Play the recorded backup video and say it is a recording (TODO before demo: record and cue it). |
-
-Things too slow for stage are shown as a recorded run or a transaction link, labelled as such.
-Sandbox holds have no Explorer link; say so if asked.
-
-## Numbers you may say
-
-From `motto/bench/results.json` (50 scenarios, 31 real needs):
-
-| Run | Wasted | Missed needs | Needs met |
-|---|---|---|---|
-| Fable 5.1 alone | $77.00 | 10 | 67.7% |
-| Sonnet 5 alone | $46.00 | 18 | 41.9% |
-| Sonnet 5 + Motto | $1.40 | 0 | 100% |
-
-Plus the live counters on the dashboard. No other numbers unless they are on screen or in
-`PROJECT_PLAN.md`.
+| --- | --- |
+| Claude is slow or unavailable | Stop the model runner and use the direct sandbox command. Label it as the no-model fallback. |
+| The paid request times out | Inspect the console and hold log before retrying. The original request may still settle. |
+| The console stops updating | Reload http://127.0.0.1:8787/. |
+| Crossref returns an incomplete pack | Show the returned authorization as the designed failure outcome. Do not fake a successful delivery. |
+| Signature verification fails | Show the error. Do not claim the receipt was verified. |
+| Network access fails | Use a recorded run and label it as recorded. |
 
 ## Likely judge questions
 
-- **What stops the device lying?** Today the desk signs each reading with an ed25519 device key, and
-  the signature and device public key go back to the agent and into the receipt memo. In the demo the
-  desk and the device are the same laptop, so the honest answer is that it trusts that device. Next,
-  the charger or venue hardware signs the reading, and in production the check runs on the rented
-  hardware.
-- **Why would an agent rent a charger?** A long-running Claude job on a laptop at low battery needs
-  power to finish. A consumer's personal agent rents a charger, hotspot or locker for its user on the
-  go. It cannot see the device, so it needs the desk to say whether the need is real.
-- **Why not Stripe?** A few-cent check only works when a settlement costs a fraction of a cent. On card
-  rails the fee is larger than our whole margin. The agent also needs no account or API key: it pays
-  per call in USDC.
-- **Why not just check first, then pay?** The agent cannot check, because it cannot see the device.
-  The hold is the commitment: the money is escrowed, the desk checks, then settles only what is owed.
-  Same pattern as a hotel card hold, with the reason attached. Nothing is paid to the desk until it
-  settles.
-- **Can the desk overcharge?** No. The hold is a ceiling: the desk can settle at most the item's published
-  ceiling the agent authorized ($3.00 for the charger). The agent side cap is `pay-permissions.yml`
-  ($10.00 per payment cap, the highest ceiling).
-- **Is this mainnet or real money?** Live demo runs in Pay.sh's sandbox. Going live on mainnet is a
-  config switch plus a few dollars of SOL for network fees. No. We stayed in the sandbox on purpose. For
-  proof, run `node motto/proof/verify.mjs`: it checks the device signatures on three recorded holds.
-- **Is the benchmark fair?** It measures buying decisions with and without a device check. Scenarios
-  are generated and seeded (`bench/generate.js`), device states are simulated from each scenario's
-  hidden truth, and every run gets the same 50 scenarios. The no-desk runs see only text context, the
-  way a cloud agent does, and the desk run can also hold. Rerun it with `npm run bench`.
-- **What if something breaks mid-hold?** If the check fails the desk reports `check_failed` and charges
-  nothing, never the $3.00. If the desk itself crashes after the hold opened, it settles the hold at
-  zero on the way out; if that settle fails too, the escrow returns to the agent when the x402 offer
-  times out (300 seconds). If settlement fails the desk reports `settle_failed`, keeps the reading, and
-  does not retry on its own.
-- **How does an agent find the desk?** It reads `GET /v1/terms`. `GET /openapi.json` carries the x402
-  payment offers for the Pay.sh catalog, so agents can find it with `pay skills search` once the
-  listing is merged (PR: https://github.com/solana-foundation/pay-skills/pull/280).
-- **How does it make money?** A few cents per check ($0.02 to $0.10 by item) plus a share of kept rentals. Venues list their own
-  checks.
-- **What is next?** New checks as catalog lines (locker, parking, battery swap), hardware-signed
-  readings, venue onboarding, Payment Channels for per minute metering.
-
-## Rehearsal
-
-Both Nihar and Nithin run the full demo at least once before the 15:15 feature freeze. Rehearse three
-times between 16:00 and 17:00. Top 5 live demos start at 17:00.
+- **Is Motto an API?** Motto exposes a purchase interface, but the product role is the intermediary. The buyer asks for a supported virtual result. Motto coordinates the provider call, validation, payment, and receipt.
+- **Can it charge or inspect my computer?** No. Without an authorized hardware integration and evidence source, software cannot perform or verify that physical action. This project does not offer that capability and must not charge for it.
+- **What does the research check prove?** It proves only that the returned pack has three records with distinct DOI identifiers and nonempty titles. It does not prove relevance, quality, DOI resolution, or full-text access.
+- **What does the signature prove?** A valid Ed25519 signature proves that the receipt came from the matching Motto signing key and that the signed payload was not changed. It does not prove that every fact in the provider data is true.
+- **Is this mainnet?** The stage command uses Pay.sh's local sandbox and test USDC. The optional Devnet path also uses test tokens. Neither is a mainnet payment.
+- **Why not call Crossref directly?** Crossref metadata is public. This demo charges for Motto's packaged service: purchase coordination, a defined output contract, validation, payment handling, and a signed receipt. It does not claim an upstream Crossref fee.
+- **What happens if the provider fails?** An incomplete result or provider failure does not earn the research price. Motto reports the outcome and returns the authorization according to the published terms.
+- **How does an agent find the service?** It reads `GET /v1/terms` and the OpenAPI document, then uses `POST /v1/buy/research` for the supported purchase.

@@ -1,12 +1,12 @@
-// Motto: agents put USDC on hold for a real-world rental, the desk
-// checks whether the need is already handled, then settles only what is owed.
+// Motto is an intermediary for virtual purchases requested by agents. The desk
+// validates the virtual deliverable, then settles only what is owed.
 // Built on Pay.sh's x402 `upto` scheme: authorize a ceiling, settle actual usage,
 // the rest goes back to the agent.
 import express from 'express';
 import { DEVNET_RPC, devnetSigner, assertDevnet } from './devnet.js';
 import { execFileSync } from 'node:child_process';
 import { consolePurchase, localConsole } from './console-purchase.js';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
@@ -25,11 +25,13 @@ const DATA_DIR = process.env.DATA_DIR ?? (NETWORK === 'devnet' ? 'data/devnet' :
 const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 // Enough history for the dashboard counters without growing memory forever.
 const MAX_HOLDS = 500;
+const PHYSICAL_ITEMS = new Set(['charger', 'hotspot', 'battery_pack', 'storage', 'display', 'monitor']);
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const SETTLE_FAILED_REASON = 'Settlement was not confirmed: charge and return amounts are unknown until the transaction is inspected. A retry, even with the same Idempotency-Key, opens a fresh hold.';
 // Statuses a retried request may be answered from. A failed or interrupted settlement cannot be
 // retried on the same hold (pay-kit memoizes settle()), so those retries open a fresh one.
 const REPLAYABLE = new Set(['checking', 'waiting_for_power', 'waiting_for_delivery', 'judging', 'fetching', 'validating', 'settling', 'kept', 'refunded']);
+const ADMIN_TOKEN = process.env.MOTTO_ADMIN_TOKEN;
 
 const operatorSigner = await Signer.env('OPERATOR_KEY') ?? (NETWORK === 'devnet' ? Signer.from(await devnetSigner('operator')) : undefined);
 const pay = await createPayKit({
@@ -136,17 +138,19 @@ app.use(express.static('public'));
 app.get('/v1/terms', (req, res) => {
   res.json({
     service: 'Motto',
+    role: 'purchase_intermediary',
+    scope: 'virtual_only',
     console_purchase: localConsole(req, NETWORK, PORT),
     version: VERSION,
-    summary: 'Refundable holds for agents buying real-world things. The rental is charged only if the need is real; a check that finds it already handled costs the item\'s check fee.',
+    summary: 'Motto is an intermediary for agent-requested virtual purchases. It does not sell, inspect, or fulfill physical goods or services.',
     why_hold:
-      'You are acting for a user on a device you cannot inspect. The desk runs the check on the device itself and returns a reading signed by the desk key published here. Hold the item\'s price when your user may need it: if the need is already handled you pay only the check fee and the rest returns, if it is real the rental starts immediately. Send an Idempotency-Key header so a retry after a timeout answers the same hold instead of opening a second one.',
+      'Motto receives a supported virtual purchase request, asks the virtual provider for the deliverable, validates it, and settles only after delivery. Send an Idempotency-Key header so a retry after a timeout answers the same hold instead of opening a second one.',
     max_hold_usd: MAX_HOLD_USD,
     network: NETWORK,
     scheme: 'x402 upto: you authorize the hold, the desk settles only what is owed, the rest returns to you.',
     devicePublicKey,
     items: publicTerms(),
-    endpoints: Object.fromEntries(Object.keys(ITEMS).map(name => [name, `POST /v1/rent/${name}`])),
+    endpoints: Object.fromEntries(Object.keys(ITEMS).map(name => [name, `POST /v1/buy/${name}`])),
   });
 });
 
@@ -167,9 +171,38 @@ app.get('/healthz', (_req, res) => {
   res.json({ ok: true, version: VERSION, network: NETWORK, commit: gitRevision(), uptime_s: Math.round(process.uptime()), holds: holds.length });
 });
 
-app.get('/v1/holds', (_req, res) => res.json({ holds }));
+app.get('/v1/public/stats', (_req, res) => {
+  const counts = {};
+  for (const hold of holds) counts[hold.status] = (counts[hold.status] ?? 0) + 1;
+  res.json({ total: holds.length, counts });
+});
 
-app.get('/v1/holds/:id', (req, res) => {
+function sameToken(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  const left = createHash('sha256').update(actual).digest();
+  const right = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(left, right);
+}
+
+function mayReadPrivateRecords(req) {
+  if (localConsole(req, NETWORK, PORT)) return true;
+  const token = /^Bearer (.+)$/i.exec(req.get('authorization') ?? '')?.[1];
+  return sameToken(token, ADMIN_TOKEN);
+}
+
+function requirePrivateRecordAccess(req, res, next) {
+  if (mayReadPrivateRecords(req)) return next();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(401).json({ error: 'private_records_require_local_or_admin_access' });
+}
+
+app.get('/v1/holds', requirePrivateRecordAccess, (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ holds });
+});
+
+app.get('/v1/holds/:id', requirePrivateRecordAccess, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const hold = holds.find(h => h.id === req.params.id);
   if (!hold) return res.status(404).json({ error: `no hold "${req.params.id}"` });
   res.json(hold);
@@ -185,7 +218,7 @@ app.get('/v1/bench', (_req, res) => {
   }
 });
 
-app.get('/v1/events', (req, res) => {
+app.get('/v1/events', requirePrivateRecordAccess, (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
   res.flushHeaders();
   const send = hold => res.write(`data: ${JSON.stringify(hold)}\n\n`);
@@ -193,7 +226,7 @@ app.get('/v1/events', (req, res) => {
   req.on('close', () => listeners.delete(send));
 });
 
-// The agent's Idempotency-Key, hashed so the hold log (public at /v1/holds) never shows it.
+// The agent's Idempotency-Key is hashed before it enters the private hold log.
 function idempotencyKeyOf(req) {
   const key = req.get('idempotency-key');
   if (typeof key !== 'string' || !key.trim() || key.length > 256) return undefined;
@@ -207,8 +240,8 @@ function responseFor(hold) {
   const reason =
     hold.status === 'settle_failed' ? SETTLE_FAILED_REASON
     : hold.status === 'interrupted' ? 'The desk restarted during the check: nothing was charged and settlement did not run.'
-    : settled ? ITEMS[hold.item].rules[hold.outcome] ?? hold.detail
-    : `The check is still running: poll GET /v1/holds/${hold.id}.`;
+    : settled ? ITEMS[hold.item]?.rules?.[hold.outcome] ?? hold.detail
+    : 'The purchase is still running. A paid retry with the same Idempotency-Key returns this hold.';
   return {
     hold_id: hold.id,
     item: hold.item,
@@ -227,8 +260,22 @@ function responseFor(hold) {
   };
 }
 
-app.post('/v1/rent/:item', async (req, res, next) => {
+app.post('/v1/rent/:item', (req, res) => {
+  res.status(410).json({
+    error: 'legacy_rental_endpoint_removed',
+    message: 'Motto supports virtual purchases only. Use POST /v1/buy/research for the active virtual offer.',
+  });
+});
+
+app.post('/v1/buy/:item', async (req, res, next) => {
   const item = req.params.item;
+  if (PHYSICAL_ITEMS.has(item)) {
+    return res.status(422).json({
+      error: 'physical_purchase_not_supported',
+      message: 'Motto is a virtual purchase intermediary and cannot inspect, deliver, or confirm physical goods or services.',
+      scope: 'virtual_only',
+    });
+  }
   if (!Object.hasOwn(ITEMS, item)) return res.status(404).json({ error: `unknown item "${item}"`, items: Object.keys(ITEMS) });
   // Reject a request the check cannot run before any money is held.
   const invalid = ITEMS[item].validate?.(req.body);
@@ -258,7 +305,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
   }
 
   // A retry of the same request (same agent, same Idempotency-Key) after a timeout must not open
-  // a second rental. The new escrow is released untouched and the earlier hold is answered again.
+  // a second purchase. The new escrow is released untouched and the earlier hold is answered again.
   const idempotencyKey = idempotencyKeyOf(req);
   const prior = idempotencyKey && holds.find(h => h.idempotency_key === idempotencyKey && h.payer === result.payment.payer && h.item === item && REPLAYABLE.has(h.status));
   if (prior) {
@@ -270,7 +317,6 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     res.setHeader('idempotent-replayed', 'true');
     return res.json(responseFor(prior));
   }
-
   const hold = {
     id: randomUUID().slice(0, 8),
     item,
@@ -360,8 +406,8 @@ app.get('/openapi.json', async (_req, res, next) => {
   try {
     res.json(
       await pay.openapi(
-        Object.entries(ITEMS).map(([name, item]) => ({ method: 'POST', path: `/v1/rent/${name}`, gate: name, summary: item.summary })),
-        { info: { title: 'Motto', version: '1.0.0', description: 'Refundable holds for agents renting real-world things.' } },
+        Object.entries(ITEMS).map(([name, item]) => ({ method: 'POST', path: `/v1/buy/${name}`, gate: name, summary: item.summary })),
+        { info: { title: 'Motto', version: '1.0.0', description: 'Virtual purchase intermediary for agent-requested deliverables.' } },
       ),
     );
   } catch (error) {

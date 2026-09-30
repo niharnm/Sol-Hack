@@ -1,11 +1,11 @@
-// Buyer agent: Claude acting for a user it cannot see, with pay tools only.
-// It reads the desk's terms, decides whether a hold makes sense, pays under a
-// per-payment cap equal to the desk's highest published hold, and reports. Then this script checks the agent's report
-// against the desk's own hold log, so the outcome does not rest on the model's word.
+// Buyer agent: Claude asks Motto to purchase a supported virtual result, with pay tools only.
+// It reads the service terms, decides whether the request matches the research service, pays under
+// the published research ceiling, and reports. This script then checks the report against Motto's
+// hold log, so the outcome does not rest on the model's word.
 //
-//   npm run buyer -- --scenario low-battery
-//   npm run buyer -- "My laptop is at 12% and has a 3 hour render left"
-//   npm run buyer -- --desk https://motto.tail039d5c.ts.net --mainnet --scenario no-wifi
+//   npm run buyer -- --scenario research-brief
+//   npm run buyer -- "Buy three DOI-backed sources about battery recycling"
+//   npm run buyer -- --desk https://example.com --mainnet --scenario research-brief
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,43 +13,33 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-// Situations the user's agent might be in. The agent never sees the device state;
-// the desk does. Each maps to one item, but the agent has to pick it from the terms.
 export const SCENARIOS = {
   'research-brief': 'Your user is preparing a technical brief and needs three DOI-backed source records about retrieval augmented generation. Buy the research pack for query "retrieval augmented generation" if its terms fit. Inspect the delivered citations and report their titles and DOI links. Structural checks do not establish relevance or paper quality.',
-  'low-battery': 'Your user left their laptop running a long training job at a hackathon table. Their last message said the battery was getting low and they are away for an hour.',
-  'plugged-in': 'Your user\'s laptop is running a long job at a hackathon. They may or may not have plugged it in before walking off; you have no way to tell.',
-  'battery-pack': 'Your user is heading out with their laptop for a 2 hour train ride with no outlets and needs a job to keep running. They want at least 50% battery for it.',
-  'big-download': 'Your user asked you to download a 60 GB dataset onto their laptop tonight. You do not know how much free disk the laptop has.',
-  'no-wifi': 'Your user\'s laptop must upload results in the next ten minutes. They might have left the venue wifi range.',
-  'two-screens': 'Your user wants their laptop driving two external monitors for a trading-desk style setup and asked you to buy an adapter only if that is not already working. You cannot see their desk.',
-  'second-screen': 'Your user is about to give a demo and asked for an external monitor at their desk. They may already have one connected.',
 };
 
 const TOOLS = ['mcp__pay__curl', 'mcp__pay__get_balance', 'mcp__pay__list_catalog', 'mcp__pay__search_catalog', 'mcp__pay__get_catalog_entry'];
 const BLOCKED = ['Bash', 'Read', 'Glob', 'Grep', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Agent', 'NotebookEdit', 'mcp__pay__topup', 'mcp__pay__create_skill'];
 
-// The buyer's per-payment cap, formatted like "$10.00": the desk's published max_hold_usd, or the highest
-// items[*].hold_usd when a desk does not publish it. Compared in USDC base units (6 decimals) so the
-// strings from /v1/terms are never rounded.
-export function highestCeiling(terms) {
-  const units = usd => { const [i, f = ''] = String(usd).split('.'); return BigInt(i) * 1_000_000n + BigInt(f.padEnd(6, '0')); };
-  const max = terms?.max_hold_usd
-    ? units(terms.max_hold_usd)
-    : Object.values(terms?.items ?? {}).filter(item => item?.hold_usd).reduce((m, { hold_usd }) => (units(hold_usd) > m ? units(hold_usd) : m), 0n);
-  if (max === 0n) throw new Error('the desk publishes neither max_hold_usd nor any hold_usd, so there is no ceiling to cap the buyer at');
-  const frac = (max % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '').padEnd(2, '0');
-  return `$${max / 1_000_000n}.${frac}`;
+// The cap comes from the selected service, not from unrelated entries in the terms response.
+// Amounts are parsed as USDC base units so decimal strings are never rounded through Number.
+export function serviceCeiling(terms, item = 'research') {
+  const usd = terms?.items?.[item]?.hold_usd;
+  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(String(usd ?? ''));
+  if (!match) throw new Error(`the desk does not publish a valid hold_usd for ${item}`);
+  const units = BigInt(match[1]) * 1_000_000n + BigInt((match[2] ?? '').padEnd(6, '0'));
+  if (units === 0n) throw new Error(`the desk publishes a zero hold_usd for ${item}`);
+  const fraction = (units % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '').padEnd(2, '0');
+  return `$${units / 1_000_000n}.${fraction}`;
 }
 
-export function buyerPrompt(desk, situation, cap) {
-  return `You are a personal agent running in the cloud for your user. You cannot inspect their devices yourself.
+export function buyerPrompt(desk, request, cap) {
+  return `You are a purchasing agent for virtual services. Motto is an intermediary between buyer intent, a supported provider, payment, validation, and a signed receipt. Motto is not a device API and cannot inspect, control, charge, repair, or otherwise act on physical equipment.
 
-Situation: ${situation}
+User request: ${request}
 
-A deposit desk rents real-world items to agents with refundable USDC holds. Its terms are free at ${desk}/v1/terms. Use your pay curl tool to read them, decide which item (if any) fits the situation, and rent it only if it makes sense for your user. Rentals are POST ${desk}/v1/rent/<item> with an optional JSON body of the item's params. Rent at most one item, at most once. Never pay more than ${cap}.
+Read the free terms at ${desk}/v1/terms with your pay curl tool. The supported purchase flow is POST ${desk}/v1/buy/research with JSON body {"query":"..."}. Buy at most one research result, at most once, only when it matches the user's request. Never pay more than ${cap}. If the user asks for a physical action, device state, or any unsupported service, do not make a payment. Do not retry a failed or timed-out paid request.
 
-When done, reply with 2 short lines for your user, then a last line that is only this JSON (decision is "held" whenever you opened a hold, whatever it settled to):
+When done, reply with 2 short lines for your user, then a last line that is only this JSON. Use decision "held" whenever you opened a hold, whatever it settled to:
 {"decision":"held"|"skipped","item":<item or null>,"hold_id":<id or null>,"charged_usd":<string or null>,"returned_usd":<string or null>,"why":<one sentence>}`;
 }
 
@@ -92,8 +82,8 @@ async function main() {
     for (const [name, text] of Object.entries(SCENARIOS)) console.log(`${name.padEnd(14)} ${text}`);
     return;
   }
-  const situation = positionals.join(' ') || SCENARIOS[values.scenario ?? 'research-brief'];
-  if (!situation) throw new Error(`unknown scenario "${values.scenario}". Try --list.`);
+  const request = positionals.join(' ') || SCENARIOS[values.scenario ?? 'research-brief'];
+  if (!request) throw new Error(`unknown scenario "${values.scenario}". Try --list.`);
   const desk = values.desk.replace(/\/$/, '');
 
   // Fail fast with a clear message if the desk is not up.
@@ -104,11 +94,10 @@ async function main() {
     throw new Error(`desk is on ${terms.network}, buyer is on ${network}. Pass --mainnet only for a mainnet desk.`);
   }
 
-  // The cap is the highest hold the desk publishes, read from its terms rather than typed here.
-  const cap = highestCeiling(terms);
+  const cap = serviceCeiling(terms);
 
   // On mainnet the cap is enforced by the pay MCP server, not by the prompt: this desk's origin
-  // only, the desk's highest hold per payment. pay 0.29 rejects every permission rule in the sandbox
+  // only, the research service ceiling per payment. pay 0.29 rejects every permission rule in the sandbox
   // ("invalid Solana network" for Surfpool's chain id), so the sandbox runs without the cap and says so.
   const dir = mkdtempSync(join(tmpdir(), 'motto-buyer-'));
   try {
@@ -123,11 +112,11 @@ async function main() {
 
     const capNote = values.mainnet ? `${cap} cap enforced by pay` : `sandbox: no pay cap, test funds, prompt cap ${cap}`;
     console.log(`Buyer (${values.model}, pay tools only, ${capNote}) -> ${desk}`);
-    console.log(`Situation: ${situation}\n`);
+    console.log(`Request: ${request}\n`);
     const started = Date.now();
     const raw = await runClaude(
       ['-p', '--model', values.model, '--setting-sources', 'local', '--mcp-config', mcp, '--strict-mcp-config', '--allowedTools', TOOLS.join(','), '--disallowedTools', BLOCKED.join(','), '--output-format', 'json'],
-      buyerPrompt(desk, situation, cap),
+      buyerPrompt(desk, request, cap),
       dir,
     );
     const result = JSON.parse(raw);

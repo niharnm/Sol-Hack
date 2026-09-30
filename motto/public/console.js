@@ -1,18 +1,18 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const holds = new Map(), eventLog = [];
-const visible = () => [...holds.values()].sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
+const visible = () => [...holds.values()].filter(h=>h.item==='research').sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
 let terms, selectedId, inspected = 'receipt', live = false, ready = false, followNewest = true;
 const queue = [], verification = new Map();
 let deliveryKey = '', previousSelection, submitting = false;
-const statusNames = {checking:'Funds authorized',waiting_for_power:'Waiting for power',waiting_for_display:'Waiting for display',waiting_for_delivery:'Waiting for delivery',judging:'Checking need',fetching:'Service in progress',validating:'Verifying evidence',settling:'Settling payment',kept:'Settled',refunded:'Funds returned',settle_failed:'Payment unconfirmed',interrupted:'Interrupted'};
-const serviceNames = {research:'Source pack',charger:'Charger rental',hotspot:'Hotspot access',battery_pack:'Battery pack',storage:'Storage',display:'Display rental',verify:'Verify a need'};
+const statusNames = {checking:'Funds authorized',fetching:'Provider in progress',validating:'Validating result',settling:'Settling payment',kept:'Delivered',refunded:'Funds returned',settle_failed:'Payment unconfirmed',interrupted:'Interrupted'};
+const serviceNames = {research:'Research source pack'};
 const serviceName = item => serviceNames[item] ?? human(item);
 let reviewedRequest;
 function animate(el) { el.classList.remove('appear'); void el.offsetWidth; el.classList.add('appear'); }
 function renderProgress(h) {
   const state=h?.status, attention=['settle_failed','interrupted'].includes(state);
-  const step=!h?-1:state==='checking'?0:['fetching','waiting_for_power','waiting_for_display','waiting_for_delivery'].includes(state)?1:['judging','validating'].includes(state)?2:3;
+  const step=!h?-1:state==='checking'?0:state==='fetching'?1:state==='validating'?2:3;
   const evidenceFailed=['check_failed','inconclusive','not_delivered'].includes(h?.outcome);
   document.querySelectorAll('[data-step]').forEach(el=>{
     const n=Number(el.dataset.step);
@@ -26,8 +26,7 @@ function renderProgress(h) {
   text('progress-count',!h?'Awaiting purchase':settled(h)?'Payment complete':attention?'Needs attention':'In progress');
   $('delivery-panel').classList.toggle('loading',Boolean(pending(h)));
 }
-
-const pending = h => h && ['checking','waiting_for_power','waiting_for_display','waiting_for_delivery','judging','fetching','validating','settling'].includes(h.status);
+const pending = h => h && ['checking','fetching','validating','settling'].includes(h.status);
 const settled = h => h && ['kept','refunded'].includes(h.status);
 const rank = h => h?.status === 'checking' ? 0 : pending(h) ? 1 : 2;
 const human = s => String(s ?? '').replaceAll('_',' ');
@@ -91,7 +90,7 @@ function inspect() {
     terms:['Terms & budget','Published service terms. This does not prove that the selected buyer fetched them.',[['Service',h?.item],['Check',terms?.items?.[h?.item]?.check],['Maximum authorization',terms?.items?.[h?.item]?.hold_usd],['Check fee',terms?.items?.[h?.item]?.check_fee_usd],['Covers',terms?.items?.[h?.item]?.covers]]],
     authorize:['Payment authorization','The desk creates a hold record after Pay.sh accepts the paid request.',[['Hold',h?.id],['Payer',h?.payer],['Authorized ceiling',h?.hold_usd],['Check fee',h?.check_fee_usd],['Opened',h?.startedAt?new Date(h.startedAt).toISOString():null]]],
     evidence:['Evidence check','Acceptance checks and provider evidence for the purchased result.',[['Contract',r?.condition??terms?.items?.[h?.item]?.check],['Provider',r?.provider??h?.provider],['Checks',r?.checks],['Evidence',r?.evidence??r?.raw??h?.raw],['Timestamp',r?.ts?new Date(r.ts).toISOString():null]]],
-    decision:['Settlement decision','The desk’s reported outcome. A verified need is not necessarily proof that a service was provisioned.',[['Outcome',h?.outcome],['Reason',r?.reason??h?.detail],['Verifier model',r?.model??'Deterministic checks; no model recorded'],['Model cost','Not measured by this API']]],
+    decision:['Settlement decision','Motto uses the validation result to decide the charged and returned amounts.',[['Outcome',h?.outcome],['Reason',r?.reason??h?.detail],['Validation','Deterministic structural checks'],['Model cost','Not measured by this API']]],
     settle:['Solana settlement','Pay.sh reports the settlement result. This console does not independently query chain finality.',[['Payment scheme','x402 upto'],['Record network',h?.network??'Not recorded on this older hold'],['Status',h?.status],['Settlement error',h?.settleError??'None reported']]],
     receipt:['Signed receipt','Inspect the exact deliverable and evidence returned by Motto and verify its Ed25519 signature locally.',[['Hold',h?.id],['Service',h?.item],['Outcome',h?.outcome],['Check fee',h?.check_fee_usd],['Reason',r?.reason??h?.detail]]]
   }[inspected];
@@ -145,7 +144,7 @@ function render() {
   text('run-status',(statusNames[h?.status]??human(h?.status??'ready')).toUpperCase());$('graph').classList.toggle('running',Boolean(pending(h)));
   node('authorize',h?'observed':null);node('evidence',pending(h)?'working':h?.reading?'observed':null);node('decision',h?.outcome?'observed':null);node('settle',settled(h)?'observed':['settle_failed','interrupted'].includes(h?.status)?'error':null);node('receipt',h?.reading?.signature?'observed':null);
   text('authorize-label',h?usd(h.hold_usd)+' ceiling accepted':'Awaiting paid request');
-  text('evidence-label',h?.status==='waiting_for_power'?'Waiting for power':h?.status==='waiting_for_delivery'?'Waiting for delivery':h?.status==='judging'?'Model evaluating evidence':h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running service':h?.reading?'Evidence returned':'Provider response / contract');
+  text('evidence-label',h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running virtual service':h?.reading?'Provider result returned':'Provider response / contract');
   text('decision-label',human(h?.outcome??'Waiting for evidence'));
   text('settle-label',settled(h)?usd(h.charged_usd)+' charged':h?.status==='settle_failed'?'Not confirmed':'No confirmed result');
   text('receipt-label',h?.reading?.signature?'Ed25519 signature present':'Awaiting signature');
@@ -202,21 +201,21 @@ function populateServices(){
 }
 function updateComposer(){
   const item=$('request-service').value, contract=terms?.items?.[item], input=$('request-query');
-  const needsText=['research','verify'].includes(item);
-  input.disabled=!needsText;input.required=needsText;input.minLength=item==='research'?3:1;input.maxLength=item==='verify'?500:200;
-  text('request-label',item==='research'?'Topic':item==='verify'?'What would make this purchase unnecessary?':'Acceptance check');
-  input.placeholder=item==='research'?'e.g. battery recycling':item==='verify'?'e.g. My laptop already has enough storage':contract?.check??'Choose a service to see its terms';
+  const needsText=item==='research';
+  input.disabled=!needsText;input.required=needsText;input.minLength=3;input.maxLength=200;
+  text('request-label',item==='research'?'Topic':'Request');
+  input.placeholder=item==='research'?'e.g. battery recycling':'Choose the available service';
   if(!needsText)input.value='';
   text('request-budget',contract?usd(contract.hold_usd)+' USDC':'—');
   $('request-submit').disabled=!contract||submitting;
-  text('request-feedback',!contract?'Choose an available service. Review its checks and payment rules before authorizing.':item==='research'?'Three citation records. Structural validation only; not a relevance or quality guarantee.': `${contract.covers??'Device checks apply to the hosting device.'} · Check fee ${usd(contract.check_fee_usd)}. Review the exact payment rules before buying.`);
+  text('request-feedback',!contract?'Choose an available virtual service. Review its checks and payment rules before authorizing.':'Three citation records. Structural validation only; not a relevance or quality guarantee.');
 }
 $('request-form').onsubmit=event=>{
   event.preventDefault();if(submitting||!terms)return;
   const item=$('request-service').value,contract=terms.items?.[item];if(!contract)return;
   const query=$('request-query').value.trim();
-  if((item==='research'&&query.length<3)||(item==='verify'&&!query)){text('request-feedback','Please enter your request.');return;}
-  const body=item==='research'?{query}:item==='verify'?{condition:query}:{};
+  if(item!=='research'||query.length<3){text('request-feedback','Enter a research topic of at least three characters.');return;}
+  const body={query};
   reviewedRequest={item,body};
   const requestKey=crypto.randomUUID();
   text('review-title',serviceName(item));text('review-description',[contract.covers,contract.check].filter(Boolean).join('. '));text('review-budget',usd(contract.hold_usd)+' USDC');
@@ -228,7 +227,7 @@ $('request-form').onsubmit=event=>{
   const origin=shellQuote(location.origin), payload=shellQuote(JSON.stringify(body));
   const command=terms.network==='devnet'
     ? `cd motto && node scripts/buy-service.mjs ${shellQuote(item)} ${payload} ${origin} ${shellQuote(contract.hold_usd)} ${shellQuote(requestKey)}`
-    : `npx --yes --package @solana/pay pay ${terms.network==='localnet'?'--sandbox':'--mainnet'} curl -sS -X POST ${shellQuote(location.origin+'/v1/rent/'+item)} -H 'Content-Type: application/json' -H ${shellQuote('Idempotency-Key: '+requestKey)} -d ${payload}`;
+    : `npx --yes --package @solana/pay pay ${terms.network==='localnet'?'--sandbox':'--mainnet'} curl -sS -X POST ${shellQuote(location.origin+'/v1/buy/'+item)} -H 'Content-Type: application/json' -H ${shellQuote('Idempotency-Key: '+requestKey)} -d ${payload}`;
   text('purchase-command',command);text('copy-agent','Copy purchase command');$('launch-dialog').showModal();
 };
 $('confirm-purchase').onclick=async()=>{

@@ -53,17 +53,19 @@ test('a failed settle reports no money moved, whatever the outcome', () => {
 });
 
 test('every item states rules whose numbers match its own prices', () => {
+  assert.deepEqual(Object.keys(ITEMS), ['research']);
   for (const [name, item] of Object.entries(ITEMS)) {
     const hold = toBaseUnits(item.hold_usd);
     const fee = toBaseUnits(item.check_fee_usd);
     assert.ok(fee <= hold, `${name}: fee within hold`);
     assert.ok(item.covers, `${name}: says what the hold buys`);
     assert.ok(item.summary.length <= 63, `${name}: summary fits the registry cap`);
+    assert.equal(item.fulfillment.type, 'virtual', `${name}: uses virtual fulfillment`);
     for (const [outcome, sentence] of Object.entries(item.rules)) {
       const { charged_usd, returned_usd } = settlementFor(item, outcome);
       const expected = charged_usd === '0.00' ? `nothing charged, $${returned_usd} returned` : chargeKind(item, outcome) === 'fee' ? `the $${charged_usd} check fee is charged, $${returned_usd} returned` : `$${charged_usd} charged (${item.covers}), nothing returned`;
       assert.ok(sentence.endsWith(`${expected}.`), `${name}.${outcome}: "${sentence}" should end with "${expected}."`);
     }
   }
-  assert.equal(MAX_HOLD_USD, '10.00');
+  assert.equal(MAX_HOLD_USD, '1.00');
 });

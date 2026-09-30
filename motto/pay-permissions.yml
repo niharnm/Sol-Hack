@@ -1,7 +1,7 @@
 # Spending cap for a buyer agent: pay mcp --permissions ./pay-permissions.yml
-# max_payment is compared against the x402 upto ceiling, so it must cover the highest hold on the
-# desk ($10.00, the monitor). GET /v1/terms reports it as max_hold_usd.
+# max_payment is compared against the x402 upto ceiling. GET /v1/terms reports the active
+# virtual offer ceiling as max_hold_usd.
 origins: [http://127.0.0.1:8787, https://motto.tail039d5c.ts.net]
 networks: [mainnet, localnet]
-max_payment: "$10.00"
+max_payment: "$1.00"
 allow_any_asset: false

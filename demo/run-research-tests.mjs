@@ -11,7 +11,7 @@ const cases=['machine learning for drug discovery','lithium ion battery recyclin
 const records=[];
 for(const query of cases){
   console.log(`Buying research pack: ${query}`);
-  const {stdout}=await run('npx',['--yes','--package','@solana/pay','pay','--sandbox','curl','-sS','-X','POST',base+'/v1/rent/research','-H','Content-Type: application/json','-d',JSON.stringify({query})],{timeout:90000,maxBuffer:1024*1024});
+  const {stdout}=await run('npx',['--yes','--package','@solana/pay','pay','--sandbox','curl','-sS','-X','POST',base+'/v1/buy/research','-H','Content-Type: application/json','-d',JSON.stringify({query})],{timeout:90000,maxBuffer:1024*1024});
   const response=stdout.trim().split('\n').map(line=>{try{return JSON.parse(line);}catch{return null;}}).find(value=>value?.hold_id);
   if(!response)throw new Error('No payment receipt returned. Inspect the desk before retrying.');
   const hold=await fetch(base+'/v1/holds/'+response.hold_id).then(r=>r.json());

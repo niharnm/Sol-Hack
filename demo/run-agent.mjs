@@ -1,4 +1,4 @@
-// A real Claude buyer with only Pay.sh tools; all payments use sandbox USDC.
+// A Claude buyer with only Pay.sh tools; all payments use sandbox USDC.
 //   DESK_URL=http://127.0.0.1:8787 node demo/run-agent.mjs
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -18,9 +18,9 @@ async function ceilingFor(item) {
 }
 const ceiling = await ceilingFor(ITEM);
 
-const mission = `You are a research purchasing agent. Your user needs three DOI-backed sources about retrieval augmented generation for a technical research brief. Use only Pay.sh tools and only ${desk}. Read GET /v1/terms, explain the research pack price and acceptance conditions briefly, then make exactly ONE paid POST /v1/rent/${ITEM} with JSON body {"query":"retrieval augmented generation"}. Authorize no more than ${ceiling}. Do not retry a failed or timed-out paid request. Inspect the returned signed_reading.deliverable and checks. Report the actual titles and DOI links, checks passed or failed, hold ID, amount charged and amount returned. A structural citation check is not proof of relevance or paper quality. Do not claim to have read the papers, verified the signature yourself, or run a mainnet payment.`;
+const mission = `You are a purchasing agent for virtual services. Motto is an intermediary between your user's intent, a supported provider, payment, validation, and a signed receipt. It is not a device API and cannot perform or verify physical actions. Your user needs three DOI-backed sources about retrieval augmented generation for a technical research brief. Use only Pay.sh tools and only ${desk}. Read GET /v1/terms, explain the research pack price and acceptance conditions briefly, then make exactly ONE paid POST /v1/buy/${ITEM} with JSON body {"query":"retrieval augmented generation"}. Authorize no more than ${ceiling}. Do not retry a failed or timed-out paid request. Inspect the returned signed_reading.deliverable and checks. Report the actual titles and DOI links, checks passed or failed, hold ID, amount charged and amount returned. A structural citation check is not proof of relevance or paper quality. Do not claim to have read the papers, verified the signature yourself, or run a mainnet payment.`;
 const config = JSON.stringify({ mcpServers: { pay: { command: 'npx', args: ['--yes', '--package', '@solana/pay', 'pay', '--sandbox', 'mcp'] } } });
-console.log(`\nDEMO MISSION: Buy three DOI-backed research sources. Authorize up to ${ceiling}.\nReal Claude buyer · Pay.sh sandbox tools only · desk ${desk}\n`);
+console.log(`\nDEMO MISSION: Ask Motto to buy three DOI-backed research sources. Authorize up to ${ceiling}.\nClaude buyer · Pay.sh sandbox tools only · desk ${desk}\n`);
 const child = spawn('claude', ['-p', '--verbose', '--output-format', 'stream-json', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--allowedTools', 'mcp__pay__*', '--mcp-config', config], { cwd: tmpdir(), stdio: ['pipe', 'pipe', 'inherit'] });
 child.stdin.end(mission);
 const lines = createInterface({ input: child.stdout });

@@ -14,12 +14,12 @@ const toBaseUnits = usd => {
 };
 const [{ holds }, terms] = await Promise.all([get('/v1/holds'), get('/v1/terms')]);
 if (!['localnet','devnet'].includes(terms.network)) throw new Error('Expected a test-network desk.');
-const hold = holds.find(h => h.network===terms.network && ['kept', 'refunded'].includes(h.status) && h.reading?.signature);
-if (!hold) throw new Error('No completed signed hold. Run a test payment first.');
+const hold = holds.find(h => h.item==='research' && h.network===terms.network && ['kept', 'refunded'].includes(h.status) && h.reading?.signature);
+if (!hold) throw new Error('No completed signed research hold. Run a test purchase first.');
 const { signature, devicePublicKey, ...payload } = hold.reading;
-if (devicePublicKey !== terms.devicePublicKey || payload.holdId !== hold.id) throw new Error('Reading does not match the desk and hold.');
+if (devicePublicKey !== terms.devicePublicKey || payload.holdId !== hold.id) throw new Error('Receipt does not match the current Motto signing key and hold.');
 const key = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(devicePublicKey, 'hex')]), format: 'der', type: 'spki' });
-if (!verify(null, Buffer.from(JSON.stringify(payload)), key, Buffer.from(signature, 'hex'))) throw new Error('Invalid reading signature.');
+if (!verify(null, Buffer.from(JSON.stringify(payload)), key, Buffer.from(signature, 'hex'))) throw new Error('Invalid receipt signature.');
 const holdUsd = hold.hold_usd ?? terms.items?.[hold.item]?.hold_usd;
 const charged = toBaseUnits(hold.charged_usd);
 if (charged + toBaseUnits(hold.returned_usd) !== toBaseUnits(holdUsd)) throw new Error(`Amounts do not add up to the $${holdUsd} hold.`);
@@ -37,4 +37,4 @@ if(terms.network==='devnet'){
   chainStatus=rpc.result?.value?.[0];
   if(!chainStatus||chainStatus.err||!['confirmed','finalized'].includes(chainStatus.confirmationStatus))throw new Error('Devnet settlement is not confirmed by the public RPC.');
 }
-console.log(JSON.stringify({ hold: hold.id, network: terms.network, device_signature: 'VERIFIED', outcome: hold.outcome, hold_usd: holdUsd, charged_usd: hold.charged_usd, returned_usd: hold.returned_usd, settlement_tx: hold.settlementTx ?? null, chain_status: chainStatus?.confirmationStatus ?? 'Not independently checked' }, null, 2));
+console.log(JSON.stringify({ hold: hold.id, service: hold.item, network: terms.network, receipt_signature: 'VERIFIED', outcome: hold.outcome, hold_usd: holdUsd, charged_usd: hold.charged_usd, returned_usd: hold.returned_usd, settlement_tx: hold.settlementTx ?? null, chain_status: chainStatus?.confirmationStatus ?? 'Not independently checked' }, null, 2));

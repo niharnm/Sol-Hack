@@ -34,7 +34,7 @@ async function startDesk(extraEnv = {}) {
   const server = { base: `http://127.0.0.1:${port}`, log: '' };
   server.child = spawn(process.execPath, ['src/server.js'], {
     cwd: root,
-    env: { ...env, NETWORK: 'localnet', PORT: String(port), DATA_DIR: dir, DEVICE_KEY_PATH: join(dir, 'device.pem'), MOCK_POWER: 'ac', ...extraEnv },
+    env: { ...env, NETWORK: 'localnet', PORT: String(port), DATA_DIR: dir, DEVICE_KEY_PATH: join(dir, 'device.pem'), MOTTO_ADMIN_TOKEN: 'test-admin-token', MOCK_POWER: 'ac', ...extraEnv },
   });
   children.push(server.child);
   await new Promise((resolve, reject) => {
@@ -82,60 +82,64 @@ after(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('GET /v1/terms lists the items', async () => {
+test('GET /v1/terms states the intermediary role and virtual-only offer', async () => {
   const res = await fetch(`${desk.base}/v1/terms`);
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.deepEqual(Object.keys(body.items), ['research', 'charger', 'hotspot', 'battery_pack', 'storage', 'display', 'verify']);
+  assert.equal(body.role, 'purchase_intermediary');
+  assert.equal(body.scope, 'virtual_only');
+  assert.deepEqual(Object.keys(body.items), ['research']);
   for (const [name, item] of Object.entries(body.items)) {
-    assert.equal(body.endpoints[name], `POST /v1/rent/${name}`);
+    assert.equal(body.endpoints[name], `POST /v1/buy/${name}`);
     assert.match(item.hold_usd, /^\d+\.\d{2}$/, `${name} has a price`);
     assert.match(item.check_fee_usd, /^\d+\.\d{2}$/, `${name} has a check fee`);
     assert.ok(item.covers, `${name} says what the hold buys`);
     assert.ok((name === 'research' ? item.rules.inconclusive : item.rules.already_handled) && item.rules.delivered && item.rules.check_failed, `${name} states its rules`);
+    assert.equal(item.fulfillment.type, 'virtual');
   }
-  assert.deepEqual([body.items.charger.hold_usd, body.items.charger.check_fee_usd, body.items.display.hold_usd, body.items.verify.charge_on_delivered], ['3.00', '0.05', '10.00', 'fee']);
-  assert.equal(body.max_hold_usd, '10.00');
+  assert.equal(body.max_hold_usd, '1.00');
   assert.match(body.devicePublicKey, /^[0-9a-f]{64}$/);
 });
 
-test('POST /v1/rent/charger without payment returns the x402 upto offer', async () => {
-  const res = await fetch(`${desk.base}/v1/rent/charger`, { method: 'POST' });
+test('POST /v1/buy/research without payment returns the x402 upto offer', async () => {
+  const res = await fetch(`${desk.base}/v1/buy/research`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: 'battery recycling' }) });
   assert.equal(res.status, 402);
   assert.match(res.headers.get('content-type'), /application\/json/);
   // The offer rides base64 JSON in the payment-required header and plain JSON in the body.
   const header = JSON.parse(Buffer.from(res.headers.get('payment-required'), 'base64').toString('utf8'));
   assert.equal(header.x402Version, 2);
-  assert.equal(header.resource.url, `${desk.base}/v1/rent/charger`);
+  assert.equal(header.resource.url, `${desk.base}/v1/buy/research`);
   assert.equal(header.accepts[0].scheme, 'upto');
-  // The charger's $3.00 ceiling in USDC base units.
-  assert.equal(header.accepts[0].amount, '3000000');
+  assert.equal(header.accepts[0].amount, '1000000');
   assert.equal(header.accepts[0].maxTimeoutSeconds, 300);
   const body = await res.json();
   assert.equal(body.accepts[0].scheme, 'upto');
   assert.equal(body.accepts[0].protocol, 'x402');
-  assert.equal(body.accepts[0].amount, '3000000');
+  assert.equal(body.accepts[0].amount, '1000000');
   assert.equal(body.accepts[0].payTo, header.accepts[0].payTo);
 });
 
-test('POST /v1/rent/verify without a condition is a 400 before any hold', async () => {
-  const res = await fetch(`${desk.base}/v1/rent/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(res.status, 400);
-  assert.equal(res.headers.get('payment-required'), null);
-  assert.match((await res.json()).error, /condition is required/);
-  const ok = await fetch(`${desk.base}/v1/rent/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ condition: 'The laptop has 20 GB free' }) });
-  assert.equal(ok.status, 402);
+test('legacy rental and physical purchase requests are rejected before payment', async () => {
+  const requests = [
+    ['/v1/rent/research', 410, 'legacy_rental_endpoint_removed'],
+    ['/v1/rent/charger', 410, 'legacy_rental_endpoint_removed'],
+    ...['charger', 'hotspot', 'battery_pack', 'storage', 'display', 'monitor'].map(name => [`/v1/buy/${name}`, 422, 'physical_purchase_not_supported']),
+  ];
+  for (const [path, status, error] of requests) {
+    const res = await fetch(`${desk.base}${path}`, { method: 'POST' });
+    assert.equal(res.status, status, path);
+    assert.equal(res.headers.get('payment-required'), null, path);
+    assert.equal((await res.json()).error, error, path);
+  }
 });
 
-test('GET /openapi.json advertises the payment offers', async () => {
+test('GET /openapi.json advertises only the canonical research purchase', async () => {
   const res = await fetch(`${desk.base}/openapi.json`);
   assert.equal(res.status, 200);
   const doc = await res.json();
-  const ceilings = { research: '1000000', charger: '3000000', hotspot: '8000000', battery_pack: '6000000', storage: '2000000', display: '10000000', verify: '100000' };
-  for (const [name, amount] of Object.entries(ceilings)) {
-    const [offer] = doc.paths[`/v1/rent/${name}`].post['x-payment-info'].offers;
-    assert.deepEqual([offer.method, offer.scheme, offer.amount, offer.currency], ['x402', 'upto', amount, 'USDC'], name);
-  }
+  assert.deepEqual(Object.keys(doc.paths), ['/v1/buy/research']);
+  const [offer] = doc.paths['/v1/buy/research'].post['x-payment-info'].offers;
+  assert.deepEqual([offer.method, offer.scheme, offer.amount, offer.currency], ['x402', 'upto', '1000000', 'USDC']);
 });
 
 test('GET /healthz reports network, commit, uptime and hold count', async () => {
@@ -167,10 +171,26 @@ test('GET /v1/holds/:id returns one hold or a JSON 404', async () => {
   assert.equal(typeof (await missing.json()).error, 'string');
 });
 
+test('detailed holds and events reject public requests while redacted stats stay public', async () => {
+  const publicHeaders = { 'x-forwarded-host': 'motto.example', 'x-forwarded-for': '203.0.113.10' };
+  for (const path of ['/v1/holds', '/v1/holds/old00001', '/v1/events']) {
+    const denied = await fetch(`${desk.base}${path}`, { headers: publicHeaders });
+    assert.equal(denied.status, 401, path);
+    assert.equal((await denied.json()).error, 'private_records_require_local_or_admin_access', path);
+  }
+  const allowed = await fetch(`${desk.base}/v1/holds/old00001`, { headers: { ...publicHeaders, authorization: 'Bearer test-admin-token' } });
+  assert.equal(allowed.status, 200);
+  assert.equal((await allowed.json()).id, 'old00001');
+  const stats = await fetch(`${desk.base}/v1/public/stats`, { headers: publicHeaders });
+  assert.equal(stats.status, 200);
+  assert.deepEqual(await stats.json(), { total: 3, counts: { interrupted: 1, refunded: 1, kept: 1 } });
+});
+
 test('unknown items and unknown /v1 routes return JSON 404', async () => {
-  const item = await fetch(`${desk.base}/v1/rent/toString`, { method: 'POST' });
+  const item = await fetch(`${desk.base}/v1/buy/toString`, { method: 'POST' });
   assert.equal(item.status, 404);
-  assert.deepEqual((await item.json()).items, ['research', 'charger', 'hotspot', 'battery_pack', 'storage', 'display', 'verify']);
+  assert.equal(item.headers.get('payment-required'), null);
+  assert.deepEqual((await item.json()).items, ['research']);
   const route = await fetch(`${desk.base}/v1/nope`);
   assert.equal(route.status, 404);
   assert.match(route.headers.get('content-type'), /application\/json/);
@@ -178,26 +198,26 @@ test('unknown items and unknown /v1 routes return JSON 404', async () => {
 });
 
 test('a malformed JSON body gets a JSON 400, not an HTML page', async () => {
-  const res = await fetch(`${desk.base}/v1/rent/charger`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{bad' });
+  const res = await fetch(`${desk.base}/v1/buy/research`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{bad' });
   assert.equal(res.status, 400);
   assert.match(res.headers.get('content-type'), /application\/json/);
   assert.equal(typeof (await res.json()).error, 'string');
-  await assertLogged(desk, /POST \/v1\/rent\/charger -> 400/);
+  await assertLogged(desk, /POST \/v1\/buy\/research -> 400/);
 });
 
 test('a pay-kit failure (RPC unreachable) gets a JSON 500 without the stack', async () => {
   const broken = await startDesk({ RPC_URL: `http://127.0.0.1:${await freePort()}` });
-  const res = await fetch(`${broken.base}/v1/rent/charger`, { method: 'POST' });
+  const res = await fetch(`${broken.base}/v1/buy/research`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: 'battery recycling' }) });
   assert.equal(res.status, 500);
   assert.match(res.headers.get('content-type'), /application\/json/);
   assert.deepEqual(await res.json(), { error: 'internal error' });
-  await assertLogged(broken, /POST \/v1\/rent\/charger -> 500/);
+  await assertLogged(broken, /POST \/v1\/buy\/research -> 500/);
 });
 
 
 test('research rejects a missing topic before authorizing any payment', async () => {
   const before = await fetch(`${desk.base}/v1/holds`).then(r => r.json());
-  const res = await fetch(`${desk.base}/v1/rent/research`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const res = await fetch(`${desk.base}/v1/buy/research`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   assert.equal(res.status,400);
   assert.match((await res.json()).error,/query/);
   const after = await fetch(`${desk.base}/v1/holds`).then(r => r.json());

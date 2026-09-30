@@ -37,7 +37,7 @@ export async function devnetPurchase({query,port,desk,rpcUrl=DEVNET_RPC}) {
   if(balance<1000000n){const error=new Error(`Devnet buyer needs at least 1 test USDC: ${signer.address}. Fund it at faucet.circle.com (Solana Devnet).`);error.code='DEVNET_FUNDING';throw error;}
   const client=await createPayKitClient({network:'devnet',rpcUrl,signer,accept:['x402'],
     permissions:ClientPermissions.builder().onlyNetwork('devnet').allowOrigin(origin).maxAmountPerPayment(usd('1.00')).build()});
-  const response=await client.fetch(`${origin}/v1/rent/research`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query}),signal:AbortSignal.timeout(90000)});
+  const response=await client.fetch(`${origin}/v1/buy/research`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query}),signal:AbortSignal.timeout(90000)});
   const receipt=await response.json();
   if(!response.ok||!receipt.hold_id)throw new Error('Devnet purchase did not return a receipt. Check wallet funding and existing requests before retrying.');
   return receipt;
