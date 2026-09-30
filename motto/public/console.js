@@ -1,14 +1,13 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const holds = new Map(), eventLog = [];
-const visible = () => [...holds.values()].filter(h=>h.item==='research').sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
+const visible = () => [...holds.values()].filter(h=>h.item!=='research').sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
 let terms, selectedId, inspected = 'receipt', live = false, ready = false, followNewest = true;
 const queue = [], verification = new Map();
-let deliveryKey = '', previousSelection, submitting = false;
+let deliveryKey = '', previousSelection;
 const statusNames = {checking:'Funds authorized',fetching:'Provider in progress',validating:'Validating result',settling:'Settling payment',kept:'Delivered',refunded:'Funds returned',settle_failed:'Payment unconfirmed',interrupted:'Interrupted'};
-const serviceNames = {research:'Research source pack'};
-const serviceName = item => serviceNames[item] ?? human(item);
-let reviewedRequest, privateRecords=false;
+const serviceName = item => human(item).replace(/\b\w/g,c=>c.toUpperCase());
+let privateRecords=false;
 let motionRecord, eventRenderKey = "", eventRecordId;
 const stateSeenAt = new Map();
 function animate(el, name='appear') { el.classList.remove(name); void el.offsetWidth; el.classList.add(name); }
@@ -38,7 +37,7 @@ function renderProgress(h) {
 // Status explanations and elapsed time report observations, never estimated completion.
 function renderProgressContext(){
   const h=current();
-  if(privateRecords){text('progress-detail','Purchase activity is private. Open the workspace on the hosting laptop to follow live steps.');text('progress-age','');return;}
+  if(privateRecords){text('progress-detail','Purchase activity is private on this connection.');text('progress-age','');return;}
   const explanations={
     checking:'Payment authorization received. Waiting for the service check.',
     fetching:'The provider is preparing your result. Evidence has not arrived yet.',
@@ -50,7 +49,7 @@ function renderProgressContext(){
     interrupted:'This purchase was interrupted. Inspect the receipt before trying again.'
   };
   const disconnected=h&&pending(h)&&!live;
-  text('progress-detail',disconnected?'Live updates disconnected. Showing the last known state; reconnecting…':explanations[h?.status]??'Choose a service to begin. Each step updates when the desk reports it.');
+  text('progress-detail',disconnected?'Live updates disconnected. Showing the last known state; reconnecting…':explanations[h?.status]??'Purchases from your agent appear here. Each step updates when Motto reports it.');
   const latest=h?.steps?.at(-1), since=latest&&latest.status===h?.status?latest.at:stateSeenAt.get(h?.id);
   const seconds=Math.max(0,Math.floor((Date.now()-Number(since))/1000));
   text('progress-age',pending(h)&&Number.isFinite(seconds)?`${seconds}s since ${latest?'step changed':'status received'}`:'');
@@ -113,7 +112,7 @@ function renderRuns() {
     const b=document.createElement('button'); b.className='run'+(selectedId===h.id?' selected':'')+(['settle_failed','interrupted'].includes(h.status)?' failed':'');
     b.classList.toggle('running',Boolean(pending(h)));
     b.setAttribute('aria-pressed',String(selectedId===h.id));
-    const title=document.createElement('div'); title.className='run-title'; title.textContent=h.item==='research'?(h.query??h.reading?.query??serviceName(h.item)):serviceName(h.item); title.append(document.createElement('i'));
+    const title=document.createElement('div'); title.className='run-title'; title.textContent=h.title??serviceName(h.item); title.append(document.createElement('i'));
     const meta=document.createElement('div'); meta.className='run-meta'; const id=document.createElement('span'),status=document.createElement('span');id.textContent=h.id;status.textContent=statusNames[h.status]??human(h.status);meta.append(id,status);b.append(title,meta);
     b.onclick=()=>{selectedId=h.id;followNewest=h.id===list[0]?.id;render();};frag.append(b);
   }
@@ -169,42 +168,29 @@ function inspect() {
   text('raw-json',JSON.stringify(holds.get(selectedId)??{},null,2));$('raw-link').href=h?'/v1/holds/'+encodeURIComponent(h.id):'/v1/holds';
 }
 function renderDelivery(h) {
-  const r=h?.reading, pack=r?.deliverable;
+  const r=h?.reading;
   text('purchase-kind',h?serviceName(h.item).toUpperCase():'YOUR PURCHASE');
-  text('purchase-query',h?(pack?.query??h.query??serviceName(h.item)):'A clear outcome. A visible money trail.');
-  text('delivery-count',pack ? `${pack.citations?.length??0} RECORDS` : pending(h)?'IN PROGRESS':r?'EVIDENCE RECORDED':'AWAITING PURCHASE');
-  const reason=r?.reason??r?.detail??h?.detail;
-  text('purchase-contract',reason??(h?terms?.items?.[h.item]?.check??'Waiting for the service to report evidence.':'Select a service above. Motto will show what was checked and why funds moved.'));
-  const nextKey=JSON.stringify([selectedId,h?.status,pack,reason]);
+  text('purchase-query',h?(h.title??serviceName(h.item)):'A clear outcome. A visible money trail.');
+  text('delivery-count',pending(h)?'IN PROGRESS':r?'EVIDENCE RECORDED':'AWAITING PURCHASE');
+  text('purchase-contract',r?.reason??r?.detail??h?.detail??(h?'Waiting for the seller to report an outcome.':'Select a purchase to see its outcome and payment details.'));
+  const nextKey=JSON.stringify([h?.id,h?.status,Boolean(r)]);
   if(nextKey===deliveryKey)return;deliveryKey=nextKey;
-  const frag=document.createDocumentFragment();
-  for(const c of pack?.citations??[]) {
-    const card=document.createElement('article');card.className='citation appear';card.style.setProperty('--arrival-delay',`${Math.min(frag.childNodes.length,5)*80}ms`);
-    const label=document.createElement('span');label.className='eyebrow';label.textContent=c.publisher??'CROSSREF RECORD';
-    const a=document.createElement('a');a.textContent=c.title;
-    try {const u=new URL(c.url);if(u.protocol==='https:'&&u.hostname==='doi.org'){a.href=u.href;a.target='_blank';a.rel='noopener';}}catch{}
-    const doi=document.createElement('code');doi.textContent=c.doi;card.append(label,a,doi);frag.append(card);
-  }
-  $('citations').replaceChildren(frag);
-  if(!pack?.citations?.length){
-    const p=document.createElement('p');p.className='empty-evidence';
-    p.textContent=!h?'Your outcome and supporting evidence will appear here.':pending(h)?'The desk is working. This page updates automatically.':r?'Evidence recorded. Open the receipt to inspect the check and verify its signature.':'No evidence was recorded. Inspect the receipt before trying again.';
-    $('citations').append(p);
-  }
+  const p=document.createElement('p');p.className='empty-evidence';
+  p.textContent=!h?'Your purchases and supporting evidence will appear here.':pending(h)?'Your purchase is in progress. Updates appear automatically.':r?'Open the receipt to inspect the recorded evidence and verify its signature.':'No evidence was recorded. Inspect the receipt before trying again.';
+  $('citations').replaceChildren(p);
 }
 
 function render() {
   const h=current();
-  if(submitting && pending(h))text('request-feedback',statusNames[h.status]??human(h.status));
   renderRuns();renderEvents();renderDelivery(h);renderProgress(h);
   if(previousSelection!==selectedId){animate($('delivery-panel'));previousSelection=selectedId;}
-  text('run-id',h?.id??'NO PURCHASE SELECTED');text('run-title',h?serviceName(h.item):'Your next purchase starts here.');
+  text('run-id',h?.id??'NO PURCHASE SELECTED');text('run-title',h?(h.title??serviceName(h.item)):'Your purchases, in one place.');
   $('open-receipt').disabled=!h;
   $('run-status').dataset.state=!h?'ready':settled(h)?'settled':pending(h)?'pending':'attention';
   text('run-status',(statusNames[h?.status]??human(h?.status??'ready')).toUpperCase());$('graph').classList.toggle('running',Boolean(pending(h)));
   node('authorize',h?'observed':null);node('evidence',pending(h)?'working':h?.reading?'observed':null);node('decision',h?.outcome?'observed':null);node('settle',settled(h)?'observed':['settle_failed','interrupted'].includes(h?.status)?'error':null);node('receipt',h?.reading?.signature?'observed':null);
   text('authorize-label',h?usd(h.hold_usd)+' ceiling accepted':'Awaiting paid request');
-  text('evidence-label',h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running virtual service':h?.reading?'Provider result returned':'Provider response / contract');
+  text('evidence-label',h?.status==='fetching'?'Waiting for the seller':h?.status==='validating'?'Checking acceptance rules':pending(h)?'Purchase in progress':h?.reading?'Provider result returned':'Provider response / contract');
   text('decision-label',human(h?.outcome??'Waiting for evidence'));
   text('settle-label',settled(h)?usd(h.charged_usd)+' charged':h?.status==='settle_failed'?'Not confirmed':'No confirmed result');
   text('receipt-label',h?.reading?.signature?'Ed25519 signature present':'Awaiting signature');
@@ -223,87 +209,32 @@ async function verifyReading() {
     const valid=await crypto.subtle.verify('Ed25519',key,bytes(signature),new TextEncoder().encode(JSON.stringify(payload)));
     if(!valid)throw new Error('Signature invalid');
     verification.set(id,devicePublicKey===terms?.devicePublicKey?'Verified · matches current desk key':'Signature valid · differs from current desk key');
-  } catch(e) {verification.set(id,'Not verified: '+e.message+'. Use node demo/verify-proof.mjs if Ed25519 is unsupported.');}
+  } catch(e) {verification.set(id,'Not verified: '+e.message+'. This browser may not support signature verification.');}
   if(selectedId===id)inspect();
 }
-function connection(ok) {if(privateRecords){live=false;document.body.dataset.stream='offline';text('connection','● private activity');$('connection').classList.remove('online');text('footer-status','Live activity is available on the hosting laptop');renderProgressContext();return;}live=ok;document.body.dataset.stream=ok?'live':'offline';renderProgressContext();text('connection',ok?'● stream live':'● reconnecting');$('connection').classList.toggle('online',ok);text('footer-status',ok?'Live desk event stream':'Disconnected · showing last received records');}
+function connection(ok) {if(privateRecords){live=false;document.body.dataset.stream='offline';text('connection','● private activity');$('connection').classList.remove('online');text('footer-status','Purchase activity is private on this connection');renderProgressContext();return;}live=ok;document.body.dataset.stream=ok?'live':'offline';renderProgressContext();text('connection',ok?'● stream live':'● reconnecting');$('connection').classList.toggle('online',ok);text('footer-status',ok?'Purchases update live':'Disconnected · showing last received records');}
 async function sync() {
   const results=await Promise.allSettled([get('/v1/terms'),get('/v1/holds')]);
   if(results[0].status==='fulfilled'){
     terms=results[0].value;
-    populateServices();text('network',terms.network==='localnet'?'SOLANA · LOCALNET':terms.network==='devnet'?'SOLANA · DEVNET':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
+    text('network',terms.network==='localnet'?'SOLANA · LOCALNET':terms.network==='devnet'?'SOLANA · DEVNET':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
 
   }
   if(results[1].status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
   if(results[1].status==='rejected'&&[401,403].includes(results[1].reason.status)){privateRecords=true;events.close();connection(false);}
   ready=true;for(const h of queue.splice(0))ingest(h,'live');render();
-  if(results.some(r=>r.status==='rejected'&&![401,403].includes(r.reason.status))){text('request-feedback','Some desk data could not be loaded. Reconnecting automatically…');setTimeout(sync,5000);}
+  if(results.some(r=>r.status==='rejected'&&![401,403].includes(r.reason.status))){text('footer-status','Unable to load purchase updates. Reconnecting…');setTimeout(sync,5000);}
 }
 document.querySelectorAll('[data-node]').forEach(n=>n.onclick=()=>{inspected=n.dataset.node;inspect();});
 
-$('request-service').onchange=updateComposer;
 $('open-receipt').onclick=()=>{inspected='receipt';inspect();$('receipt-dialog').showModal();};
-$('verify').onclick=verifyReading;$('launch').onclick=()=>{$('request-service').focus();$('request-form').scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});};$('raw').onclick=()=>$('raw-dialog').showModal();
+$('verify').onclick=verifyReading;$('raw').onclick=()=>$('raw-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
-$('copy-agent').onclick=async()=>{try{await navigator.clipboard.writeText($('purchase-command').textContent);text('copy-agent','Copied');}catch{text('copy-agent','Select and copy the command above');}};
 $('fullscreen').onclick=()=>{const promise=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();promise?.catch(()=>{});};
 const events=new EventSource('/v1/events');let opened=false;
 events.onopen=()=>{connection(true);if(opened)sync();opened=true;};events.onerror=()=>connection(false);events.onmessage=e=>{try{const h=JSON.parse(e.data);if(!ready)queue.push(h);else{ingest(h,'live');render();}}catch{}};
 render();sync();
 setInterval(()=>{if(!document.hidden)renderProgressContext();},1000);
-
-const shellQuote = value => "'"+String(value).replaceAll("'", "'\\''")+"'";
-function populateServices(){
-  const selected=$('request-service').value;
-  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a service';
-  const options=Object.keys(terms.items??{}).map(name=>{const option=document.createElement('option');option.value=name;option.textContent=serviceName(name);return option;});
-  $('request-service').replaceChildren(placeholder,...options);$('request-service').disabled=false;
-  if(terms.items?.[selected])$('request-service').value=selected;
-  updateComposer();
-}
-function updateComposer(){
-  const item=$('request-service').value, contract=terms?.items?.[item], input=$('request-query');
-  const needsText=item==='research';
-  input.disabled=!needsText;input.required=needsText;input.minLength=3;input.maxLength=200;
-  text('request-label',item==='research'?'Topic':'Request');
-  input.placeholder=item==='research'?'e.g. battery recycling':'Choose the available service';
-  if(!needsText)input.value='';
-  text('request-budget',contract?usd(contract.hold_usd)+' USDC':'—');
-  $('request-submit').disabled=!contract||submitting;
-  text('request-feedback',!contract?'Choose an available virtual service. Review its checks and payment rules before authorizing.':'Three citation records. Structural validation only; not a relevance or quality guarantee.');
-}
-$('request-form').onsubmit=event=>{
-  event.preventDefault();if(submitting||!terms)return;
-  const item=$('request-service').value,contract=terms.items?.[item];if(!contract)return;
-  const query=$('request-query').value.trim();
-  if(item!=='research'||query.length<3){text('request-feedback','Enter a research topic of at least three characters.');return;}
-  const body={query};
-  reviewedRequest={item,body};
-  const requestKey=crypto.randomUUID();
-  text('review-title',serviceName(item));text('review-description',[contract.covers,contract.check].filter(Boolean).join('. '));text('review-budget',usd(contract.hold_usd)+' USDC');
-  $('review-rules').replaceChildren(...Object.values(contract.rules??{}).map(rule=>{const li=document.createElement('li');li.textContent=rule;return li;}));
-  const local=item==='research'&&terms.console_purchase;
-  $('confirm-purchase').hidden=!local;$('command-section').hidden=local;
-  text('confirm-purchase','Authorize '+usd(contract.hold_usd)+' test USDC');
-  text('review-note',local?'This uses the hosting laptop’s test buyer wallet. The maximum is a hold, not an immediate final charge.': 'Use your own buyer wallet. This page cannot spend the hosting wallet remotely. '+(terms.network==='mainnet'?'This desk uses real funds.':'This desk uses test USDC.'));
-  const origin=shellQuote(location.origin), payload=shellQuote(JSON.stringify(body));
-  const command=terms.network==='devnet'
-    ? `cd motto && node scripts/buy-service.mjs ${shellQuote(item)} ${payload} ${origin} ${shellQuote(contract.hold_usd)} ${shellQuote(requestKey)}`
-    : `npx --yes --package @solana/pay pay ${terms.network==='localnet'?'--sandbox':'--mainnet'} curl -sS -X POST ${shellQuote(location.origin+'/v1/buy/'+item)} -H 'Content-Type: application/json' -H ${shellQuote('Idempotency-Key: '+requestKey)} -d ${payload}`;
-  text('purchase-command',command);text('copy-agent','Copy purchase command');$('launch-dialog').showModal();
-};
-$('confirm-purchase').onclick=async()=>{
-  if(submitting||reviewedRequest?.item!=='research'||!terms?.console_purchase)return;
-  const request=reviewedRequest;submitting=true;followNewest=true;$('request-submit').setAttribute('aria-busy','true');$('request-submit').disabled=true;$('confirm-purchase').disabled=true;$('launch-dialog').close();
-  text('request-submit','Working…');text('request-feedback','Authorizing test USDC. Follow the live purchase below.');
-  try{
-    const response=await fetch('/v1/console/purchase',{method:'POST',headers:{'Content-Type':'application/json','X-Motto-Console':'1'},body:JSON.stringify(request.body)});
-    const result=await response.json();if(!response.ok)throw new Error(result.error??'Purchase failed');
-    const hold=await get('/v1/holds/'+encodeURIComponent(result.hold_id));ingest(hold,'live');selectedId=hold.id;render();
-    text('request-feedback',settled(hold)?'Purchase settled. Review the outcome and your receipt below.':'Payment needs attention. Inspect the receipt before trying again.');
-  }catch(error){text('request-feedback',error.message+' Inspect existing purchases before retrying.');}
-  finally{submitting=false;$('request-submit').setAttribute('aria-busy','false');$('request-submit').disabled=false;$('confirm-purchase').disabled=false;text('request-submit','Review purchase ↗');}
-};
 
 $('download-receipt').onclick=()=>{
   const h=current();if(!h?.reading)return;
