@@ -27,7 +27,7 @@ const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 const MAX_HOLDS = 500;
 const PHYSICAL_ITEMS = new Set(['charger', 'hotspot', 'battery_pack', 'storage', 'display', 'monitor']);
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-const SETTLE_FAILED_REASON = 'Settlement was not confirmed: charge and return amounts are unknown until the transaction is inspected. A retry, even with the same Idempotency-Key, opens a fresh hold.';
+const SETTLE_FAILED_REASON = 'Settlement is unconfirmed. Recover this result or inspect the transaction before paying again; a new payment may create another hold.';
 // Statuses a retried request may be answered from. A failed or interrupted settlement cannot be
 // retried on the same hold (pay-kit memoizes settle()), so those retries open a fresh one.
 const REPLAYABLE = new Set(['checking', 'waiting_for_power', 'waiting_for_delivery', 'judging', 'fetching', 'validating', 'settling', 'kept', 'refunded']);
@@ -233,18 +233,35 @@ function idempotencyKeyOf(req) {
   return createHash('sha256').update(key).digest('hex').slice(0, 24);
 }
 
+// A buyer-generated 256-bit capability grants access to one purchase only. Store
+// only its digest in the persisted hold log; never put the secret in a URL.
+function recoveryHash(key) {
+  return typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)
+    ? createHash('sha256').update(key).digest('hex') : undefined;
+}
+app.post('/v1/results/recover', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const digest = recoveryHash(/^Bearer (.+)$/i.exec(req.get('authorization') ?? '')?.[1]);
+  if (!digest) return res.status(401).json({ error: 'A valid purchase recovery key is required.' });
+  const hold = holds.find(h => h.recovery_hash === digest);
+  if (!hold) return res.status(404).json({ error: 'No result is available for this key yet. If payment timed out, wait and recover again; do not submit another payment.' });
+  return res.json(responseFor(hold));
+});
+
 // What the agent is told about a hold, built from the hold record so a first answer and an
 // idempotent replay say exactly the same thing.
 function responseFor(hold) {
   const settled = ['kept', 'refunded', 'settle_failed'].includes(hold.status);
   const reason =
     hold.status === 'settle_failed' ? SETTLE_FAILED_REASON
-    : hold.status === 'interrupted' ? 'The desk restarted during the check: nothing was charged and settlement did not run.'
+    : hold.status === 'interrupted' ? 'This purchase was interrupted. Payment status is unknown. Inspect this result and the transaction before making another payment.'
     : settled ? ITEMS[hold.item]?.rules?.[hold.outcome] ?? hold.detail
-    : 'The purchase is still running. A paid retry with the same Idempotency-Key returns this hold.';
+    : 'The purchase is still running. Recover this result again to check progress without making another payment.';
   return {
     hold_id: hold.id,
     item: hold.item,
+    started_at: hold.startedAt,
+    steps: hold.steps ?? [],
     status: hold.status,
     outcome: hold.outcome,
     decision: settled ? hold.status : undefined,
@@ -256,7 +273,7 @@ function responseFor(hold) {
     reason,
     signed_reading: hold.reading,
     settlement_tx: hold.settlementTx,
-    network: hold.network ?? NETWORK,
+    network: hold.network ?? null,
   };
 }
 
@@ -281,6 +298,10 @@ app.post('/v1/buy/:item', async (req, res, next) => {
   const invalid = ITEMS[item].validate?.(req.body);
   if (invalid) return res.status(400).json({ error: invalid, params: ITEMS[item].params });
 
+  const recoveryKey = req.get('x-motto-recovery-key');
+  const recoveryDigest = recoveryHash(recoveryKey);
+  if (recoveryKey !== undefined && !recoveryDigest) return res.status(400).json({ error: 'X-Motto-Recovery-Key must contain 64 lowercase hex characters. Generate a fresh random key for each purchase.' });
+
   let result;
   try {
     result = await pay.requirePayment(toWebRequest(req), item);
@@ -304,6 +325,15 @@ app.post('/v1/buy/:item', async (req, res, next) => {
     return res.send(body);
   }
 
+  // Reusing a capability never attaches it to another buyer or another purchase.
+  const recovered = recoveryDigest && holds.find(h => h.recovery_hash === recoveryDigest);
+  if (recovered) {
+    try { await result.settle(); }
+    catch { return res.status(502).json({ error: 'Replay authorization release is unconfirmed. Inspect payment before retrying.' }); }
+    if (recovered.payer !== result.payment.payer || recovered.item !== item)
+      return res.status(409).json({ error: 'Recovery key already used. Use a new key for a new purchase.' });
+    return res.json(responseFor(recovered));
+  }
   // A retry of the same request (same agent, same Idempotency-Key) after a timeout must not open
   // a second purchase. The new escrow is released untouched and the earlier hold is answered again.
   const idempotencyKey = idempotencyKeyOf(req);
@@ -327,6 +357,7 @@ app.post('/v1/buy/:item', async (req, res, next) => {
     check_fee_usd: ITEMS[item].check_fee_usd,
     covers: ITEMS[item].covers,
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+    ...(recoveryDigest ? { recovery_hash: recoveryDigest } : {}),
     status: 'checking',
     startedAt: Date.now(),
   };

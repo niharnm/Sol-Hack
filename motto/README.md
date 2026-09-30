@@ -145,3 +145,24 @@ request, and the user is not charged for asking.
 Historical charger, hotspot, battery, storage, display, and generic verification demos are inactive.
 Their sandbox results and benchmark remain development history only. They are not published offers,
 not proof of physical delivery, and not part of the current buyer flow.
+
+## Buyer result recovery
+
+The website lists the live catalog and generates purchase commands plus a private recovery ticket.
+For Devnet, run the generated `scripts/buy-service.mjs` command from `motto/`; it uses the existing
+Pay SDK and requires a funded Devnet buyer. Pay CLI can review terms and retrieve results for free.
+The UI labels test networks and does not infer a charge from delivery alone.
+
+Before paying, generate 32 random bytes as 64 lowercase hexadecimal characters. Send them in
+`X-Motto-Recovery-Key` on the paid request and retain the key privately. The Devnet buyer does this
+automatically, or accepts the website-generated key as its final argument. After a timeout, send
+`POST /v1/results/recover` with `Authorization: Bearer <key>`; this never authorizes or retries a
+payment. Pending results can be retrieved again using the same key. Missing results mean wait and
+recover again, not pay again. Failed/interrupted settlement requires operator reconciliation.
+
+Only a SHA-256 digest is stored with the authorized hold. The key grants read access to that one
+purchase, including its deliverable; it is not a wallet signature or an account-wide credential.
+Keep recovery tickets private. Downloadable purchase receipts omit the key. Recovery survives a
+restart when the hold log is writable and covers the latest 500 retained holds. Existing purchases
+without a key cannot acquire one retroactively. A new key with an old idempotency key does not replace
+the original recovery key. The UI never stores recovery keys in browser persistent storage.

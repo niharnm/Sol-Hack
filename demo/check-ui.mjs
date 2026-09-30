@@ -15,12 +15,13 @@ const screenshots=process.env.UI_SCREENSHOT_DIR||join(tmpdir(),'motto-ui-check')
 await mkdir(screenshots,{recursive:true});
 const {privateKey,publicKey}=generateKeyPairSync('ed25519');
 const devicePublicKey=publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('hex');
-const terms={network:'devnet',console_purchase:false,devicePublicKey,items:{}};
+const terms={network:'devnet',console_purchase:false,devicePublicKey,items:{research:{hold_usd:'1.00',check_fee_usd:'0.00',check:'Three distinct DOI records with titles',rules:{delivered:'$1.00 charged when checks pass',inconclusive:'$0.00 charged, $1.00 returned'}}}};
 let records=[], recordsPrivate=false, writes=0;const streams=new Set();
 const makeHold=(status,extra={})=>({id:'fixture-purchase',item:'design_assets',title:'Design asset pack',status,hold_usd:'1.00',check_fee_usd:'0.00',network:'devnet',startedAt:Date.now(),...extra});
 const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://localhost').pathname;
  const json=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
+ if(path==='/v1/results/recover'){if(req.headers.authorization!=='Bearer '+'a'.repeat(64))return json({error:'No result is available for this key yet.'},404);return json({hold_id:'recovered-only',item:'research',status:'settle_failed',network:'devnet',hold_usd:'1.00',charged_usd:null,returned_usd:null});}
  if(path==='/v1/terms')return json(terms);
  if(recordsPrivate&&(path==='/v1/holds'||path==='/v1/events'))return json({error:'private_records_require_local_or_admin_access'},401);
  if(path==='/v1/holds')return json({holds:records});
@@ -40,15 +41,14 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  const text=selector=>page.locator(selector).innerText();
  const load=async list=>{records=list;await page.goto(base);await page.waitForFunction(()=>document.querySelector('#network').textContent.includes('DEVNET'));};
- await load([{id:'legacy-demo',item:'research',query:'Do not show this old topic',status:'kept',startedAt:1}]);
- assert.equal(await page.locator('#request-form').count(),0);
- assert.equal(await page.locator('.beta').count(),0);
- assert.equal(await text('#run-count'),'0');
- assert.equal(await text('#ceiling'),'—');
- assert.equal(await page.locator('#open-receipt').isDisabled(),true);
- assert.doesNotMatch(await text('body'),/research|topic|virtual|beta|Do not show this old topic/i);
- await page.screenshot({path:join(screenshots,'desktop-empty.png'),fullPage:true});
- console.log('PASS purchase tracker removes beta, virtual and research UI, hides legacy demo records, and has no checkout');
+ await load([{id:'legacy-demo',item:'research',query:'Battery recycling',status:'kept',startedAt:1,reading:{deliverable:{citations:[{title:'A delivered paper',doi:'10.1/test',url:'https://doi.org/10.1/test'}]},checks:{passed:true},limitations:'Does not verify relevance.'}}]);
+ assert.equal(await text('#run-count'),'1');assert.match(await text('#purchase-query'),/Battery recycling/);
+ assert.match(await text('#citations'),/A delivered paper/);assert.match(await text('#citations'),/Does not verify relevance/);
+ await page.fill('#offer-query',"battery's recycling");await page.click('#offers button');
+ assert.match(await text('#purchase-command'),/buy-service.mjs/);assert.match(await text('#recovery-command'),/Authorization: Bearer [a-f0-9]{64}/);
+ const ticketDownload=page.waitForEvent('download');await page.click('#save-ticket');assert.match((await ticketDownload).suggestedFilename(),/private-recovery/);
+ await page.getByLabel('Close instructions',{exact:true}).click();
+ console.log('PASS visible research purchases, offer terms, delivered results and recovery instructions');
  await load([makeHold('fetching')]);
  assert.equal(await text('#charged'),'—');assert.equal(await text('#returned'),'—');
  assert.equal(await page.locator('[data-step="1"]').getAttribute('aria-current'),'step');
@@ -106,6 +106,7 @@ try{
  await page.waitForFunction(()=>document.querySelector('#connection').textContent.includes('private activity'));
  assert.match(await text('#progress-detail'),/activity is private/);assert.equal(await page.locator('.step.active').count(),0);
  assert.deepEqual(errors,[]);console.log('PASS private activity explains access instead of showing an endless reconnect');
+ await page.fill('#recovery-key','a'.repeat(64));await page.click('#recovery-form button');await page.waitForFunction(()=>document.querySelector('#run-id').textContent==='recovered-only');assert.equal(await text('#charged'),'—');assert.match(await text('#failure-action'),/Do not pay again/);assert.equal(await page.locator('#download-receipt').isDisabled(),false);
  assert.equal(writes,0);assert.deepEqual(errors,[]);
  console.log(`All browser checks passed. Screenshots: ${screenshots}`);
 }finally{

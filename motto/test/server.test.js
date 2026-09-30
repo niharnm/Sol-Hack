@@ -3,6 +3,7 @@
 // needs network access.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -70,8 +71,8 @@ before(async () => {
     { id: 'old00001', item: 'hotspot', status: 'kept', startedAt: 1000, charged_usd: '1.00' },
     '{"id":"torn',
     '',
-    { id: 'new00002', item: 'charger', status: 'refunded', startedAt: 2000, charged_usd: '0.01' },
-    { id: 'cut00003', item: 'charger', status: 'waiting_for_power', startedAt: 3000 },
+    { recovery_hash:createHash('sha256').update('a'.repeat(64)).digest('hex'), id: 'new00002', item: 'charger', status: 'refunded', startedAt: 2000, charged_usd: '0.01' },
+    { recovery_hash:createHash('sha256').update('b'.repeat(64)).digest('hex'), id: 'cut00003', item: 'charger', status: 'waiting_for_power', startedAt: 3000 },
   ];
   writeFileSync(join(dir, 'holds.jsonl'), lines.map(l => (typeof l === 'string' ? l : JSON.stringify(l))).join('\n') + '\n');
   desk = await startDesk();
@@ -222,4 +223,17 @@ test('research rejects a missing topic before authorizing any payment', async ()
   assert.match((await res.json()).error,/query/);
   const after = await fetch(`${desk.base}/v1/holds`).then(r => r.json());
   assert.equal(after.holds.length,before.holds.length);
+});
+
+test('purchase recovery is scoped, private, durable and never starts a payment', async()=>{
+  const recover=key=>fetch(`${desk.base}/v1/results/recover`,{method:'POST',headers:key?{authorization:'Bearer '+key}:{}});
+  assert.equal((await recover()).status,401);
+  assert.equal((await recover('c'.repeat(64))).status,404);
+  const response=await recover('a'.repeat(64));assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+  const result=await response.json();assert.equal(result.hold_id,'new00002');assert.equal(result.status,'refunded');
+  for(const field of ['payer','recovery_hash','idempotency_key','holds'])assert.equal(field in result,false);
+  const interrupted=await (await recover('b'.repeat(64))).json();assert.equal(interrupted.hold_id,'cut00003');assert.equal(interrupted.status,'interrupted');assert.match(interrupted.reason,/unknown/);
+});
+test('malformed recovery key rejected before payment authorization',async()=>{
+  const res=await fetch(`${desk.base}/v1/buy/research`,{method:'POST',headers:{'content-type':'application/json','x-motto-recovery-key':'short'},body:JSON.stringify({query:'battery recycling'})});assert.equal(res.status,400);
 });
