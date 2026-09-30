@@ -1,5 +1,21 @@
 # Motto
 
+## Digital-service demo: research-source pack
+
+The primary console demo is now `POST /v1/rent/research` with `{ "query": "retrieval augmented generation" }`.
+Motto fetches live Crossref public metadata and returns three distinct DOI-backed citation records.
+It verifies record count, nonempty titles and unique DOI identifiers before charging the configured
+$1.00 service price. Incomplete results or a provider failure charge nothing and return the full hold.
+The signed reading includes the deliverable and every check result. Crossref metadata itself is public;
+the paid service is packaging and structural validation, not access to a paid upstream API.
+Checks do not establish semantic relevance, scientific quality, DOI resolution or full-text access.
+
+Open the console and click **New purchase** to copy a sandbox command. A partner with Claude Code
+access can run `node demo/run-agent.mjs` from the repository root. `npm run buyer` also defaults to
+`research-brief`. See [the two-minute demo](../demo/TWO_MINUTE_PITCH.md).
+The console defaults to digital purchases; earlier device demos remain available through a checkbox.
+
+
 > An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
 
 **Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** https://github.com/solana-foundation/pay-skills/pull/280

@@ -16,6 +16,7 @@ import { parseArgs } from 'node:util';
 // Situations the user's agent might be in. The agent never sees the device state;
 // the desk does. Each maps to one item, but the agent has to pick it from the terms.
 export const SCENARIOS = {
+  'research-brief': 'Your user is preparing a technical brief and needs three DOI-backed source records about retrieval augmented generation. Buy the research pack for query "retrieval augmented generation" if its terms fit. Inspect the delivered citations and report their titles and DOI links. Structural checks do not establish relevance or paper quality.',
   'low-battery': 'Your user left their laptop running a long training job at a hackathon table. Their last message said the battery was getting low and they are away for an hour.',
   'plugged-in': 'Your user\'s laptop is running a long job at a hackathon. They may or may not have plugged it in before walking off; you have no way to tell.',
   'battery-pack': 'Your user is heading out with their laptop for a 2 hour train ride with no outlets and needs a job to keep running. They want at least 50% battery for it.',
@@ -78,7 +79,7 @@ async function main() {
     for (const [name, text] of Object.entries(SCENARIOS)) console.log(`${name.padEnd(14)} ${text}`);
     return;
   }
-  const situation = positionals.join(' ') || SCENARIOS[values.scenario ?? 'low-battery'];
+  const situation = positionals.join(' ') || SCENARIOS[values.scenario ?? 'research-brief'];
   if (!situation) throw new Error(`unknown scenario "${values.scenario}". Try --list.`);
   const desk = values.desk.replace(/\/$/, '');
 
