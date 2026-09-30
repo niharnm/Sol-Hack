@@ -2,6 +2,8 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { tmpdir } from 'node:os';
+const terms=await fetch('http://127.0.0.1:8787/v1/terms').then(r=>r.json());
+if(terms.network!=='localnet')throw new Error('This legacy Claude runner uses sandbox tools. For the Devnet buyer run: cd motto && npm run buy:devnet -- \"research topic\"');
 const mission = `You are a research purchasing agent. Your user needs three DOI-backed sources about retrieval augmented generation for a technical research brief. Use only Pay.sh tools and only http://127.0.0.1:8787. Read GET /v1/terms, explain the research pack price and acceptance conditions briefly, then make exactly ONE paid POST /v1/rent/research with JSON body {"query":"retrieval augmented generation"}. Authorize no more than $1 test USDC. Do not retry a failed or timed-out paid request. Inspect the returned signed_reading.deliverable and checks. Report the actual titles and DOI links, checks passed or failed, hold ID, amount charged and amount returned. A structural citation check is not proof of relevance or paper quality. Do not claim to have read the papers, verified the signature yourself, or run a mainnet payment.`;
 const config = JSON.stringify({ mcpServers: { pay: { command: 'npx', args: ['--yes', '--package', '@solana/pay', 'pay', '--sandbox', 'mcp'] } } });
 console.log('\nDEMO MISSION: Buy three DOI-backed research sources. Authorize up to $1 test USDC.\nReal Claude buyer · Pay.sh sandbox tools only\n');

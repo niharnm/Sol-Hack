@@ -95,10 +95,10 @@ function inspect() {
   $('signature-state').classList.toggle('verified',verification.get(h?.id)?.startsWith('Verified')??false);
   text('signature-state',verification.get(h?.id)??(signed?'Signature present · not yet verified':'No signed delivery available.'));
   text('transaction',h?.settlementTx??'No settlement signature reported');
-  const mainnet=['mainnet','mainnet-beta'].includes(h?.network);
+  const mainnet=['mainnet','mainnet-beta'].includes(h?.network), devnet=h?.network==='devnet';
   const valid=typeof h?.settlementTx==='string'&&/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(h.settlementTx);
-  $('explorer').hidden=!(mainnet&&valid);
-  if(mainnet&&valid)$('explorer').href='https://explorer.solana.com/tx/'+h.settlementTx;
+  $('explorer').hidden=!((mainnet||devnet)&&valid);
+  if((mainnet||devnet)&&valid)$('explorer').href='https://explorer.solana.com/tx/'+h.settlementTx+(devnet?'?cluster=devnet':'');
   text('chain-note',h?.network==='localnet'?'Test USDC settlement · separate from mainnet.':!h?.network?'This older record has no network field. Explorer linking is unavailable.':'Signature reported by Pay.sh; chain finality is not independently checked here.');
   text('raw-json',JSON.stringify(holds.get(selectedId)??{},null,2));$('raw-link').href=h?'/v1/holds/'+encodeURIComponent(h.id):'/v1/holds';
 }
@@ -156,7 +156,7 @@ async function sync() {
   const results=await Promise.allSettled([get('/v1/terms'),get('/v1/holds')]);
   if(results[0].status==='fulfilled'){
     terms=results[0].value;
-    if(!terms.console_purchase)text('request-feedback','Remote console: enter a topic to get its paid API command.');text('network',terms.network==='localnet'?'SOLANA · TEST PAYMENTS':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
+    if(!terms.console_purchase)text('request-feedback','Remote console: enter a topic to get its paid API command.');text('network',terms.network==='localnet'?'SOLANA · LOCALNET':terms.network==='devnet'?'SOLANA · DEVNET':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
     $('services').replaceChildren(...Object.keys(terms.items??{}).filter(name=>['research','verify'].includes(name)).map(name=>{const e=document.createElement('span');e.className='service';e.textContent=human(name);return e;}));
   }
   if(results[1].status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
@@ -180,6 +180,10 @@ $('request-form').onsubmit=async event=>{
   const query=$('request-query').value.trim(); if(query.length<3)return;
   if(!terms.console_purchase){
     const body=JSON.stringify({query}).replaceAll("'", "'\\''");
+    if(terms.network==='devnet'){
+      text('purchase-command',`cd motto && npm run buy:devnet -- '${query.replaceAll("'", "'\\''")}' '${location.origin}'`);
+      $('launch-dialog').showModal();return;
+    }
     const network=terms.network==='localnet'?'--sandbox':'--mainnet';
     text('purchase-command',`npx --yes --package @solana/pay pay ${network} curl -sS -X POST ${location.origin}/v1/rent/research -H 'Content-Type: application/json' -d '${body}'`);
     $('launch-dialog').showModal();return;

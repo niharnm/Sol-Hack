@@ -21,3 +21,8 @@ test('console serializes purchases and releases its lock after errors',async()=>
   finish({stdout:'invalid'});await pending;assert.equal(first.code,502);
   const third=response();const next=handler(request(),third);finish({stdout:'{"hold_id":"ok"}'});await next;assert.equal(third.code,200);
 });
+test('Devnet console uses SDK adapter and never sandbox CLI',async()=>{
+  const res=response();let called=false;
+  await consolePurchase({network:'devnet',port:8787,rpcUrl:'https://api.devnet.solana.com',run:()=>assert.fail('no sandbox CLI'),purchaseDevnet:async args=>{called=true;assert.equal(args.query,'battery recycling');assert.equal(args.port,8787);return {hold_id:'devnet'};}})(request(),res);
+  assert.ok(called);assert.equal(res.body.hold_id,'devnet');
+});

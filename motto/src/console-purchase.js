@@ -1,3 +1,4 @@
+import { devnetPurchase } from './devnet.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { researchRequestError } from './research.js';
@@ -5,12 +6,12 @@ const exec = promisify(execFile);
 
 // Only the local console can spend this machine's test wallet. Never forwards to mainnet.
 export function localConsole(req, network, port) {
-  return network === 'localnet'
+  return ['localnet', 'devnet'].includes(network)
     && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
     && [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`].includes(req.headers.host)
     && !req.headers['x-forwarded-host'] && !req.headers['x-forwarded-for'];
 }
-export function consolePurchase({ network, port, run = exec }) {
+export function consolePurchase({ network, port, rpcUrl, run = exec, purchaseDevnet = devnetPurchase }) {
   let busy = false;
   return async (req, res) => {
     if (!localConsole(req, network, port) || req.headers['x-motto-console'] !== '1')
@@ -22,13 +23,15 @@ export function consolePurchase({ network, port, run = exec }) {
     if (busy) return res.status(409).json({ error: 'A purchase is already running. Wait for its receipt.' });
     busy = true;
     try {
+      if (network === 'devnet') return res.json(await purchaseDevnet({query:req.body.query.trim(),port,rpcUrl}));
       const { stdout } = await run('npx', ['--yes', '--package', '@solana/pay', 'pay', '--sandbox', 'curl', '-sS', '-X', 'POST',
         `http://127.0.0.1:${port}/v1/rent/research`, '-H', 'Content-Type: application/json', '-d', JSON.stringify({ query: req.body.query.trim() })],
         { timeout: 90000, maxBuffer: 1024 * 1024 });
       const receipt = JSON.parse(stdout);
       if (!receipt.hold_id) throw new Error('No receipt');
       res.json(receipt);
-    } catch {
+    } catch (error) {
+      if(error.code==='DEVNET_FUNDING')return res.status(503).json({error:error.message});
       res.status(502).json({ error: 'The buyer did not return a receipt. Check recent requests before retrying; the purchase may have reached the server.' });
     } finally { busy = false; }
   };

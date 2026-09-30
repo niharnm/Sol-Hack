@@ -34,7 +34,7 @@ async function startDesk(extraEnv = {}) {
   const server = { base: `http://127.0.0.1:${port}`, log: '' };
   server.child = spawn(process.execPath, ['src/server.js'], {
     cwd: root,
-    env: { ...env, PORT: String(port), DATA_DIR: dir, DEVICE_KEY_PATH: join(dir, 'device.pem'), MOCK_POWER: 'ac', ...extraEnv },
+    env: { ...env, NETWORK: 'localnet', PORT: String(port), DATA_DIR: dir, DEVICE_KEY_PATH: join(dir, 'device.pem'), MOCK_POWER: 'ac', ...extraEnv },
   });
   children.push(server.child);
   await new Promise((resolve, reject) => {

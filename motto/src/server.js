@@ -3,6 +3,7 @@
 // Built on Pay.sh's x402 `upto` scheme: authorize a ceiling, settle actual usage,
 // the rest goes back to the agent.
 import express from 'express';
+import { DEVNET_RPC, devnetSigner, assertDevnet } from './devnet.js';
 import { execFileSync } from 'node:child_process';
 import { consolePurchase, localConsole } from './console-purchase.js';
 import { randomUUID } from 'node:crypto';
@@ -15,15 +16,17 @@ import { postReceipt } from './receipt.js';
 import { settlementFor } from './settlement.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const NETWORK = process.env.NETWORK ?? 'localnet';
-const RPC_URL = process.env.RPC_URL ?? (NETWORK === 'localnet' ? 'https://402.surfnet.dev:8899' : undefined);
+const NETWORK = process.env.NETWORK ?? 'devnet';
+if (!['localnet','devnet','mainnet','mainnet-beta'].includes(NETWORK)) throw new Error('Unsupported NETWORK');
+const RPC_URL = process.env.RPC_URL || (NETWORK === 'devnet' ? DEVNET_RPC : NETWORK === 'localnet' ? 'https://402.surfnet.dev:8899' : undefined);
+if (NETWORK === 'devnet') await assertDevnet(RPC_URL);
 // Hold log location. Tests and parallel runs point this at a scratch directory.
-const DATA_DIR = process.env.DATA_DIR ?? 'data';
+const DATA_DIR = process.env.DATA_DIR ?? (NETWORK === 'devnet' ? 'data/devnet' : 'data');
 const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 // Enough history for the dashboard counters without growing memory forever.
 const MAX_HOLDS = 500;
 
-const operatorSigner = await Signer.env('OPERATOR_KEY');
+const operatorSigner = await Signer.env('OPERATOR_KEY') ?? (NETWORK === 'devnet' ? Signer.from(await devnetSigner('operator')) : undefined);
 const pay = await createPayKit({
   network: NETWORK,
   rpcUrl: RPC_URL,
@@ -151,7 +154,7 @@ function gitRevision() {
     return null;
   }
 }
-app.post('/v1/console/purchase', consolePurchase({ network: NETWORK, port: PORT }));
+app.post('/v1/console/purchase', consolePurchase({ network: NETWORK, port: PORT, rpcUrl: RPC_URL }));
 
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, network: NETWORK, commit: gitRevision(), uptime_s: Math.round(process.uptime()), holds: holds.length });

@@ -1,5 +1,36 @@
 # Motto
 
+## Solana Devnet (default)
+
+The server now defaults to public Solana Devnet and checks the RPC genesis hash before starting.
+`npm start` creates isolated operator/buyer keys in gitignored `keys/devnet/` and stores Devnet
+history separately in `data/devnet/`. Keep these key files private and back them up if needed.
+
+```sh
+cd motto
+npm run devnet:status           # public addresses and balances only
+npm run devnet:fund             # request free test SOL (faucet limits apply)
+npm start
+npm run buy:devnet -- "battery recycling"
+```
+
+Fund the operator with Devnet SOL and the buyer with Devnet SOL plus at least 1 Devnet USDC.
+Use https://faucet.solana.com and https://faucet.circle.com (choose Solana Devnet).
+The console uses the PayKit SDK with Devnet-only, exact-origin, $1-per-purchase permissions.
+Remote users run `buy:devnet` with the desk URL as a second argument; the public UI cannot
+spend the hosting machine's wallet. Transactions link to Explorer with `?cluster=devnet`.
+Successful settlements also attempt an onchain memo. `node demo/verify-proof.mjs` from the
+repo root checks both the signed result and Devnet transaction confirmation.
+
+The Devnet code path and unpaid offers are verified; paid end-to-end testing requires funded
+wallets. The old proof files are localnet evidence, not Devnet proof. Existing sandbox/Claude
+scripts remain explicitly sandbox-only. Roll back with `npm run start:sandbox`; old history
+and wallets remain intact. Unset an inherited `RPC_URL` when switching networks.
+
+The partner-hosted public deployment must pull this change and switch its launch environment
+to `NETWORK=devnet`; this repository update does not deploy that laptop or fund its wallets.
+
+
 ## Digital-service demo: research-source pack
 
 The primary console demo is now `POST /v1/rent/research` with `{ "query": "retrieval augmented generation" }`.
@@ -10,7 +41,7 @@ The signed reading includes the deliverable and every check result. Crossref met
 the paid service is packaging and structural validation, not access to a paid upstream API.
 Checks do not establish semantic relevance, scientific quality, DOI resolution or full-text access.
 
-Open the console and click **New purchase** to copy a sandbox command. A partner with Claude Code
+Open the local console and type a topic to run a Devnet purchase. A partner with Claude Code
 access can run `node demo/run-agent.mjs` from the repository root. `npm run buyer` also defaults to
 `research-brief`. See [the two-minute demo](../demo/TWO_MINUTE_PITCH.md).
 The console defaults to digital purchases; earlier device demos remain available through a checkbox.
