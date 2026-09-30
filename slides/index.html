@@ -128,16 +128,16 @@
   <section class="slide s1 on" id="s1" aria-label="Title" aria-hidden="false">
     <div class="rule"></div>
     <h1>Motto</h1>
-    <p class="tagline">An agent authorizes the price. We verify delivery, settle what’s owed, and return the rest.</p>
+    <p class="tagline">Your agent chooses a spending limit. Motto quotes the work, checks delivery, and settles the result.</p>
     <p class="built">Built on <b>Pay.sh</b> and <b>Solana</b></p>
-    <p class="live"><span class="k">Live</span><span>motto.tail039d5c.ts.net</span></p>
+    <p class="live"><span class="k">Network</span><span>Devnet default · mainnet unverified</span></p>
   </section>
 
   <section class="slide loop" id="s2" aria-label="The loop" aria-hidden="true">
-    <h2>Hold the price. Check the device. Keep it or send it back.</h2>
+    <h2>Quote. Authorize. Verify. Settle.</h2>
     <svg viewBox="0 0 1680 430" role="img" aria-labelledby="loop-title loop-desc">
       <title id="loop-title">The Motto loop</title>
-      <desc id="loop-desc">The buyer agent holds the item price, three dollars for a charger. The desk checks the device. If the need is real the desk keeps three dollars. If the need is already handled it refunds two dollars ninety five cents and keeps a five cent check fee.</desc>
+      <desc id="loop-desc">The buyer asks for a supported virtual result. Motto coordinates the provider, checks the delivery contract, and settles the accepted quote price only when all requested records pass.</desc>
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
         <marker id="ah-keep" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah keep" d="M0 0 L10 5 L0 10 z"/></marker>
@@ -146,85 +146,70 @@
 
       <rect class="node" x="0" y="120" width="280" height="190" rx="28"/>
       <text class="t-name" x="140" y="185" text-anchor="middle">Buyer agent</text>
-      <text class="t-sub" x="140" y="235" text-anchor="middle">cannot see</text>
-      <text class="t-sub" x="140" y="273" text-anchor="middle">the device</text>
+      <text class="t-sub" x="140" y="235" text-anchor="middle">authorizes through</text>
+      <text class="t-sub" x="140" y="273" text-anchor="middle">Pay SDK or CLI</text>
 
       <path class="ln" d="M286 215 L592 215" marker-end="url(#ah)"/>
-      <text class="t-step" x="439" y="176" text-anchor="middle"><tspan class="f-wait">1</tspan> Hold $3.00</text>
+      <text class="t-step" x="439" y="176" text-anchor="middle"><tspan class="f-wait">1</tspan> Quote ceiling</text>
       <text class="t-mono" x="439" y="264" text-anchor="middle">x402 upto</text>
       <text class="t-sub" x="439" y="306" text-anchor="middle">nothing paid yet</text>
 
       <rect class="node desk" x="600" y="85" width="440" height="260" rx="28"/>
       <text class="t-name" x="820" y="146" text-anchor="middle">Motto</text>
-      <text class="t-step" x="820" y="203" text-anchor="middle"><tspan class="f-wait">2</tspan> Check the device</text>
-      <text class="t-sub" x="820" y="253" text-anchor="middle">reads power or network</text>
-      <text class="t-sub" x="820" y="295" text-anchor="middle">signs the reading</text>
+      <text class="t-step" x="820" y="203" text-anchor="middle"><tspan class="f-wait">2</tspan> Coordinate provider</text>
+      <text class="t-sub" x="820" y="253" text-anchor="middle">checks the virtual result</text>
+      <text class="t-sub" x="820" y="295" text-anchor="middle">signs the delivery</text>
 
       <path class="ln keep" d="M1046 195 C1130 195 1150 135 1241 135" marker-end="url(#ah-keep)"/>
       <path class="ln refund" d="M1046 235 C1130 235 1150 335 1241 335" marker-end="url(#ah-refund)"/>
 
       <text class="t-step" x="1250" y="36"><tspan class="f-wait">3</tspan> Settle</text>
       <rect class="node keep" x="1250" y="50" width="430" height="170" rx="28"/>
-      <text class="t-big f-keep" x="1282" y="126">Keep $3.00</text>
-      <text class="t-sub" x="1282" y="180">the need is real</text>
+      <text class="t-big f-keep" x="1282" y="126">Quote price</text>
+      <text class="t-sub" x="1282" y="180">verified result delivered</text>
       <rect class="node refund" x="1250" y="250" width="430" height="170" rx="28"/>
-      <text class="t-big f-refund" x="1282" y="316">Refund $2.95</text>
-      <text class="t-sub" x="1282" y="362">need already handled,</text>
-      <text class="t-sub" x="1282" y="398">$0.05 check fee</text>
+      <text class="t-big f-refund" x="1282" y="316">Return hold</text>
+      <text class="t-sub" x="1282" y="362">provider failed or</text>
+      <text class="t-sub" x="1282" y="398">delivery incomplete</text>
     </svg>
     <div class="checks">
-      <div class="check"><span class="tag">Charger</span><span class="q">Is the device on AC power?</span></div>
-      <div class="check"><span class="tag">Hotspot</span><span class="q">Is the device on the venue network?</span></div>
+      <div class="check"><span class="tag">Provider</span><span class="q">Crossref metadata</span></div>
+      <div class="check"><span class="tag">Acceptance</span><span class="q">Count, DOI, title terms and years</span></div>
     </div>
-    <p class="moto">The price changes per item. <span>The rules do not.</span></p>
+    <p class="moto">Motto is the intermediary. <span>Virtual delivery only.</span></p>
   </section>
 
-  <section class="slide s3" id="s3" aria-label="Benchmark" aria-hidden="true">
-    <h2>A cheaper model with Motto beat the frontier model on wasted spend.</h2>
-    <p class="sub">Same 50 generated scenarios for every run. Wasted means money spent on a need that was already handled.</p>
-    <div class="bench" role="table" aria-label="Benchmark results">
-      <div class="row head" role="row">
-        <div role="columnheader"></div>
-        <div role="columnheader">Wasted spend</div>
-        <div role="columnheader">Real needs met</div>
-      </div>
-      <div class="row" role="row">
-        <div class="who" role="cell"><b>Fable 5.1 alone</b><span>claude-fable-5-1, model cost $1.1983</span></div>
-        <div class="num bad" role="cell">$77.00</div>
-        <div class="num" role="cell">67.7%<small>missed 10 of 31</small></div>
-      </div>
-      <div class="row" role="row">
-        <div class="who" role="cell"><b>Sonnet 5 alone</b><span>claude-sonnet-5, model cost $0.1098</span></div>
-        <div class="num bad" role="cell">$46.00</div>
-        <div class="num" role="cell">41.9%<small>missed 18 of 31</small></div>
-      </div>
-      <div class="row win" role="row">
-        <div class="who" role="cell"><b>Sonnet 5 + Motto</b><span>claude-sonnet-5, model cost $0.1214</span></div>
-        <div class="num" role="cell">$1.40</div>
-        <div class="num" role="cell">100%<small>missed 0 of 31</small></div>
-      </div>
+  <section class="slide s3" id="s3" aria-label="Sandbox settlement evidence" aria-hidden="true">
+    <h2>Paid, refunded, or unconfirmed.</h2>
+    <p class="sub">Sandbox integration outcomes. Test USDC, no public-chain finality claim.</p>
+    <div class="bench" role="table" aria-label="Sandbox purchase outcomes">
+      <div class="row head" role="row"><div role="columnheader">Delivery</div><div role="columnheader">Charge</div><div role="columnheader">State</div></div>
+      <div class="row" role="row"><div class="who" role="cell"><b>Complete pack</b><span>All requested checks pass</span></div><div class="num" role="cell">Quote price</div><div class="num" role="cell">PAID</div></div>
+      <div class="row" role="row"><div class="who" role="cell"><b>Incomplete pack</b><span>Acceptance fails</span></div><div class="num" role="cell">$0.00</div><div class="num" role="cell">REFUNDED</div></div>
+      <div class="row" role="row"><div class="who" role="cell"><b>Settlement error</b><span>Inspect the original purchase</span></div><div class="num" role="cell">Unknown</div><div class="num" role="cell">UNCONFIRMED</div></div>
     </div>
-    <p class="note">Scenarios are generated (bench/generate.js, seeded). Device states are simulated from each scenario's hidden truth; in the live product the desk reads the real device.<span>Source: motto/bench/results.json, run 2026-09-30.</span></p>
+    <p class="note">Sandbox integration recorded a payment and refund. A later zero-charge SDK error remained unconfirmed and was not retried. Live Devnet and mainnet settlement remain unverified.</p>
   </section>
 
   <section class="slide s4" id="s4" aria-label="Why a middleman and why Solana" aria-hidden="true">
-    <h2>Every market of strangers needed a middleman.</h2>
+    <h2>Digital results within caller permission.</h2>
     <div class="mids">
-      <div class="mid"><div class="name">PayPal</div><p>Became the trust layer for eBay. eBay bought it.</p></div>
-      <div class="mid"><div class="name">Stripe</div><p>Sits between businesses and banks.</p></div>
-      <div class="mid"><div class="name">OpenRouter</div><p>Sits between apps and model providers.</p></div>
-      <div class="mid us"><div class="name">Pay.sh</div><p>Sits between agents and paid APIs.</p></div>
+      <div class="mid"><div class="name">User</div><p>States the result they want.</p></div>
+      <div class="mid"><div class="name">pay</div><p>Enforces the quote price, origin, and network.</p></div>
+      <div class="mid us"><div class="name">Motto</div><p>Coordinates the offer, provider, checks, and receipt.</p></div>
+      <div class="mid"><div class="name">Provider</div><p>Returns the virtual deliverable.</p></div>
     </div>
-    <p class="claim">Agents are the next strangers spending money.<br>Someone has to <span>hold the deposit</span>.</p>
+    <p class="claim">Complete packs earn the quote price. Failed acceptance earns zero.</p>
     <div class="pair">
       <div class="card">
         <div class="lab">Why Solana</div>
-        <p>A few-cent check only works when a settlement costs a fraction of a cent.</p>
-        <p class="small">On card rails the fee is larger than our whole margin.</p>
+        <p>The agent authorizes the task price within its chosen spending limit.</p>
+        <p class="small">The x402 upto hold lets Motto return the full ceiling when delivery fails.</p>
       </div>
       <div class="card">
-        <div class="lab">Next</div>
-        <p>New checks are new catalog lines: locker, parking, battery swap. Hardware-signed readings next.</p>
+        <div class="lab">Boundary</div>
+        <p>Digital citation packs with explicit acceptance rules.</p>
+        <p class="small">The tracker displays results and verifies signed receipts.</p>
       </div>
     </div>
   </section>

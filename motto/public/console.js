@@ -2,106 +2,54 @@
 const $ = id => document.getElementById(id);
 const purchases = new Map();
 const verification = new Map();
+const stateSeenAt = new Map();
+let connectionState = 'offline', motionRecord, historyRenderKey, deliveryRenderKey;
 const statuses = {fetching:'Finding sources',validating:'Checking requirements',settling:'Settling payment',paid:'Paid',refunded:'Refunded',settle_failed:'Settlement unconfirmed',interrupted:'Interrupted'};
-let catalog, quote, selectedId, apiKey = '', purchasing = false, quoting = false, syncing = false, syncTimer, commandKey, accessVersion = 0;
+let catalog, selectedId, apiKey = '', syncing = false, syncTimer, accessVersion = 0;
 const finalStatuses = new Set(['paid','refunded','settle_failed','interrupted']);
 const money = value => value == null ? 'Not recorded' : `${Number(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})} USDC`;
 const short = value => value ? `${value.slice(0,8)}…${value.slice(-6)}` : 'Not recorded';
 const current = () => purchases.get(selectedId);
-function text(id, value) { $(id).textContent = value; }
+function text(id, value) { if ($(id).textContent !== String(value)) $(id).textContent = value; }
+function animate(element, name) { element.classList.remove(name); void element.offsetWidth; element.classList.add(name); }
 function feedback(id, message = '', error = false) { text(id,message); $(id).classList.toggle('error',error); }
-async function request(path, {method = 'GET', body, authenticated = true} = {}) {
+async function request(path, {authenticated = true} = {}) {
   const headers = {Accept:'application/json'};
   if (authenticated && apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const response = await fetch(path,{method,headers,body:body === undefined ? undefined : JSON.stringify(body),signal:AbortSignal.timeout(method === 'POST' ? 120000 : 15000)});
+  const response = await fetch(path,{headers,signal:AbortSignal.timeout(15000)});
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) throw new Error('Access denied. Connect with your server API key through API access.');
+    if (response.status === 401 || response.status === 403) throw Object.assign(new Error('Access denied. Connect with your server API key through API access.'),{status:response.status});
     throw new Error(typeof data?.error === 'string' ? data.error : typeof data?.message === 'string' ? data.message : `Request failed (${response.status}).`);
   }
   if (!data) throw new Error('Server returned an unreadable response.');
   return data;
-}
-function getInput() {
-  const input = {query:$('query').value.trim(),count:Number($('count').value)};
-  const requiredTerms = $('required-terms').value.split(',').map(term => term.trim()).filter(Boolean);
-  if (requiredTerms.length) input.required_terms = requiredTerms;
-  if ($('from-year').value) input.from_year = Number($('from-year').value);
-  if ($('to-year').value) input.to_year = Number($('to-year').value);
-  return input;
-}
-function clearQuote() {
-  quote = undefined;
-  commandKey = undefined;
-  $('quote-panel').hidden = true;
-  feedback('purchase-feedback');
-}
-function acceptanceDescription(acceptance) {
-  if (typeof acceptance === 'string') return acceptance;
-  return acceptance?.description || 'See the signed receipt for the result of each acceptance check.';
-}
-function expired() { return !quote || !Number.isFinite(Date.parse(quote.expires_at)) || Date.parse(quote.expires_at) <= Date.now(); }
-function shellQuote(value) { return "'" + value.replaceAll("'","'\\''") + "'"; }
-function paymentCommand() {
-  if (!quote || !/^[a-zA-Z0-9_-]{1,128}$/.test(quote.id)) throw new Error('Server returned an invalid quote identifier.');
-  const url = new URL(`/v1/purchases/${quote.id}`,location.origin);
-  if (!['http:','https:'].includes(url.protocol)) throw new Error('Payment requires an HTTP or HTTPS server.');
-  if (catalog.network === 'devnet') {
-    return `npm run buy:devnet -- --quote-id ${shellQuote(quote.id)} --desk ${shellQuote(location.origin)} --max-spend ${shellQuote(quote.max_spend_usd)}`;
-  }
-  if (!['localnet','mainnet','mainnet-beta'].includes(catalog.network)) throw new Error('This network needs a documented compatible payment client.');
-  const network = catalog.network === 'localnet' ? '--sandbox' : '--mainnet';
-  const auth = apiKey ? ' \\\n  -H "Authorization: Bearer ${MOTTO_API_KEY:?Set MOTTO_API_KEY to your server API key}"' : '';
-  return `pay ${network} curl -X POST ${shellQuote(url.href)} \\\n  -H ${shellQuote('Idempotency-Key: ' + commandKey)}${auth}`;
-}
-function renderQuote() {
-  if (!quote) return;
-  $('quote-panel').hidden = false;
-  text('quote-query',`${quote.input.count} sources about ${quote.input.query}`);
-  text('quote-budget',money(quote.max_spend_usd));
-  text('quote-ceiling',money(quote.ceiling_usd));
-  text('quote-unit',money(quote.unit_price_usd));
-  const terms = quote.input.required_terms?.length ? quote.input.required_terms.join(', ') : 'None';
-  const from = quote.input.from_year ?? 'Any';
-  const to = quote.input.to_year ?? 'Any';
-  text('quote-scope',`Required title terms: ${terms}. Publication range: ${from} through ${to}.`);
-  text('quote-acceptance',acceptanceDescription(quote.acceptance));
-  const remaining = Math.max(0,Math.ceil((Date.parse(quote.expires_at) - Date.now()) / 1000));
-  text('quote-expiry',expired() ? 'Expired. Request a new quote.' : `Expires in ${Math.floor(remaining/60)}m ${remaining%60}s`);
-  const local = catalog?.console?.local_pay === true;
-  $('local-payment').hidden = !local;
-  $('external-payment').hidden = local;
-  $('purchase-submit').disabled = purchasing || expired();
-  text('purchase-submit',purchasing ? 'Authorizing purchase…' : 'Authorize this purchase ↗');
-  $('copy-command').disabled = expired();
-  if (!local) {
-    try { text('purchase-command',paymentCommand()); }
-    catch (error) { text('purchase-command',error.message); $('copy-command').disabled = true; }
-    text('external-instructions',catalog.network === 'devnet' ? 'Run this command from the Motto directory using your isolated devnet buyer. It purchases this reviewed quote.' : 'Pay from your agent’s own Pay.sh wallet using this command.');
-    text('command-auth-note',catalog.network === 'devnet' ? (apiKey ? 'Set MOTTO_API_KEY in your terminal before running. This uses test USDC and preserves the reviewed quote. Inspect the existing purchase before retrying.' : 'This uses test USDC and preserves the reviewed quote. Inspect the existing purchase before retrying.') : apiKey ? 'Set MOTTO_API_KEY in your terminal before running. The command uses your existing Pay.sh spending permissions. Keep this idempotency key when retrying.' : 'The command uses your existing Pay.sh spending permissions. Keep this idempotency key when retrying.');
-  }
 }
 function ingest(purchase) {
   if (!purchase || typeof purchase.id !== 'string') return;
   const previous = purchases.get(purchase.id);
   if (previous && Date.parse(previous.updated_at) > Date.parse(purchase.updated_at)) return;
   if (previous?.reading?.signature !== purchase.reading?.signature) verification.delete(purchase.id);
+  if (!previous || previous.status !== purchase.status) stateSeenAt.set(purchase.id,Date.now());
   purchases.set(purchase.id,purchase);
 }
 function renderHistory() {
   const list = [...purchases.values()].sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const key = JSON.stringify([selectedId,connectionState,list.map(purchase => [purchase.id,purchase.status,purchase.input?.query,purchase.input?.count])]);
+  if (key === historyRenderKey) return;
+  historyRenderKey = key;
   text('purchase-count',String(list.length));
   const fragment = document.createDocumentFragment();
   for (const purchase of list) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'purchase-row' + (purchase.id === selectedId ? ' selected' : '') + (['settle_failed','interrupted'].includes(purchase.status) ? ' failed' : '');
+    button.classList.toggle('running',!finalStatuses.has(purchase.status));
     button.setAttribute('aria-pressed',String(purchase.id === selectedId));
-    const title = document.createElement('strong'); title.textContent = purchase.input?.query || 'Research purchase';
+    const title = document.createElement('strong'); title.textContent = purchase.title || purchase.input?.query || 'Agent purchase';
     const meta = document.createElement('span'), status = document.createElement('span'), count = document.createElement('span');
     status.textContent = statuses[purchase.status] || purchase.status;
-    count.textContent = `${purchase.input?.count ?? '?'} sources`;
+    count.textContent = purchase.input?.count ? `${purchase.input.count} records` : purchase.service || 'Agent purchase';
     meta.append(status,count);button.append(title,meta);
     button.addEventListener('click',() => { selectedId = purchase.id; render(); });
     fragment.append(button);
@@ -110,24 +58,65 @@ function renderHistory() {
   $('purchases').replaceChildren(fragment);
 }
 function renderProgress(purchase) {
-  const status = purchase?.status;
+  const status = purchase?.status, reading = purchase?.reading;
   const rank = ['fetching','validating','settling'].indexOf(status);
+  const settled = ['paid','refunded'].includes(status);
+  const attention = ['settle_failed','interrupted'].includes(status);
+  const same = motionRecord?.id === purchase?.id;
   document.querySelectorAll('[data-step]').forEach((step,index) => {
-    step.classList.toggle('done',status === 'paid' || (status === 'refunded' && index < 3) || (rank >= 0 && index < rank));
-    step.classList.toggle('active',rank === index);
-    step.classList.toggle('failed',['settle_failed','interrupted'].includes(status) && index === 2);
+    const failed = (index === 1 && reading?.checks?.passed === false) || (index === 2 && attention);
+    const complete = !failed && [Boolean(reading) || rank > 0 || status === 'paid',reading?.checks?.passed === true,settled,settled && Boolean(reading?.signature)][index];
+    if (!same) step.classList.remove('step-arrived','step-alert');
+    if (same && complete && !step.classList.contains('done')) animate(step,'step-arrived');
+    if (same && failed && !step.classList.contains('failed')) animate(step,'step-alert');
+    step.classList.toggle('done',complete);step.classList.toggle('active',rank === index && !failed);step.classList.toggle('failed',failed);
+    if (rank === index) step.setAttribute('aria-current','step');else step.removeAttribute('aria-current');
   });
   text('purchase-status',statuses[status] || (status ? status : 'Awaiting purchase'));
-  $('purchase-status').classList.toggle('success',['paid','refunded'].includes(status));
-  $('purchase-status').classList.toggle('failed',['settle_failed','interrupted'].includes(status));
+  $('purchase-status').classList.toggle('success',settled);$('purchase-status').classList.toggle('failed',attention);
+  $('purchase-status').dataset.state = attention ? 'attention' : settled ? 'settled' : rank >= 0 ? 'pending' : 'idle';
+  $('delivery-panel').classList.toggle('loading',rank >= 0);$('delivery-panel').setAttribute('aria-busy',String(rank >= 0));
+  renderProgressContext();
+}
+function renderProgressContext() {
+  const purchase = current();
+  const pending = purchase && !finalStatuses.has(purchase.status);
+  const descriptions = {fetching:'The provider is preparing your result. Delivery evidence has not arrived yet.',validating:'Motto is checking the result against your quoted requirements.',settling:'The delivery check is complete. Waiting for the payment provider’s settlement result.',paid:'The server reported payment. Inspect the delivered sources and signed receipt.',refunded:'The delivery did not pass all checks. The server reported return of the quoted hold.',settle_failed:'Settlement is unconfirmed. Inspect this purchase before authorizing another payment.',interrupted:'This purchase was interrupted. Inspect its record before trying again.'};
+  text('progress-detail',connectionState === 'denied' ? 'Purchase activity requires access. Connect through API access to view current records.' : pending && connectionState !== 'live' ? 'Updates disconnected. Showing the last reported state while retrying the connection.' : descriptions[purchase?.status] || 'Select a purchase to follow its reported state.');
+  const since = stateSeenAt.get(purchase?.id);
+  text('progress-age',pending && since ? `${Math.max(0,Math.floor((Date.now() - since)/1000))}s since status received` : '');
+}
+function renderMotion(purchase) {
+  const same = motionRecord?.id === purchase?.id;
+  const split = JSON.stringify([purchase?.charged_usd,purchase?.returned_usd]);
+  const moneyCard = document.querySelector('.money-card'), receipt = document.querySelector('.receipt-card');
+  if (!same) {
+    $('purchase-status').classList.remove('status-arrived');moneyCard.classList.remove('money-arrived');receipt.classList.remove('receipt-arrived');$('delivery-panel').classList.remove('attention-arrived');
+    for (const id of ['record-charged','record-returned']) $(id).classList.remove('amount-arrived');
+  } else if (purchase) {
+    if (motionRecord.status !== purchase.status) {
+      animate($('purchase-status'),'status-arrived');
+      if (['settle_failed','interrupted'].includes(purchase.status)) animate($('delivery-panel'),'attention-arrived');
+    }
+    if (['paid','refunded'].includes(purchase.status) && split !== motionRecord.split) {
+      animate(moneyCard,'money-arrived');
+      for (const id of ['record-charged','record-returned']) animate($(id),'amount-arrived');
+    }
+    if (purchase.reading && !motionRecord.evidence) animate(receipt,'receipt-arrived');
+  }
+  motionRecord = purchase ? {id:purchase.id,status:purchase.status,split,evidence:Boolean(purchase.reading)} : undefined;
 }
 function renderSources(purchase) {
   const reading = purchase?.reading;
-  text('result-query',purchase ? `${purchase.input?.count ?? '?'} requested sources · ${purchase.input?.query ?? 'Research request'}` : 'Select a purchase to inspect its sources and payment.');
+  text('result-query',purchase ? purchase.title || purchase.input?.query || purchase.service || 'Agent purchase' : 'Select a purchase to inspect its delivery and payment.');
   text('result-reason',purchase?.reason || reading?.reason || '');
+  text('result-limitations',reading?.limitations || (purchase ? 'Acceptance checks and their limits are recorded in the signed receipt.' : ''));
+  const key = JSON.stringify([purchase?.id,reading?.deliverable?.citations,finalStatuses.has(purchase?.status)]);
+  if (key === deliveryRenderKey) return;
+  deliveryRenderKey = key;
   const fragment = document.createDocumentFragment();
   for (const [index,citation] of (reading?.deliverable?.citations ?? []).entries()) {
-    const article = document.createElement('article');article.className = 'citation';
+    const article = document.createElement('article');article.className = 'citation' + (motionRecord?.id === purchase?.id && !motionRecord?.evidence ? ' appear' : '');article.style.setProperty('--arrival-delay',`${index * 70}ms`);
     const number = document.createElement('span');number.className = 'citation-number';number.textContent = String(index + 1).padStart(2,'0');
     const content = document.createElement('div');
     const title = document.createElement('a');title.textContent = citation.title || 'Untitled source';
@@ -137,11 +126,10 @@ function renderSources(purchase) {
   }
   if (!fragment.childNodes.length) {
     const empty = document.createElement('p');empty.className = 'quiet';
-    empty.textContent = !purchase ? 'Delivered sources will appear here.' : finalStatuses.has(purchase.status) ? 'No source records were delivered.' : 'Waiting for the provider result.';
+    empty.textContent = !purchase ? 'Delivery evidence will appear here.' : finalStatuses.has(purchase.status) ? 'No delivery records were reported.' : 'Waiting for the provider result.';
     fragment.append(empty);
   }
   $('citations').replaceChildren(fragment);
-  text('result-limitations',reading?.limitations || (purchase ? 'Acceptance checks establish source count, DOI format, title requirements and publication dates. They do not establish scientific quality or full-text access.' : ''));
 }
 function receiptFields(entries) {
   const fragment = document.createDocumentFragment();
@@ -178,6 +166,7 @@ function render() {
   const uncertain = purchase && ['settle_failed','interrupted'].includes(purchase.status);
   text('record-charged',uncertain ? 'Unconfirmed' : money(purchase?.charged_usd));
   text('record-returned',uncertain ? 'Unconfirmed' : money(purchase?.returned_usd));
+  renderMotion(purchase);
   text('payment-note',uncertain ? 'Settlement is unconfirmed. Do not assume a charge or refund succeeded.' : purchase && !finalStatuses.has(purchase.status) ? 'Authorization is in progress. Final charges and returns are not yet confirmed.' : purchase ? 'Amounts are the settlement result reported by the server.' : 'Payment amounts appear after settlement.');
 }
 function hexBytes(value, length) {
@@ -212,84 +201,26 @@ async function sync() {
       const services = await request('/v1/services',{authenticated:false});
       if (version !== accessVersion) return;
       catalog = services;
-      const research = catalog.services?.research;
-      const unit = research?.pricing?.unit_usd ?? research?.pricing?.unit_price_usd;
-      const maxUnits = research?.pricing?.max_units ?? research?.pricing?.max_count;
-      if (typeof unit !== 'string' || !/^[0-9]+(?:\.[0-9]{1,6})?$/.test(unit) || Number(unit) <= 0 || !Number.isInteger(maxUnits) || maxUnits < 1 || maxUnits > 20) throw new Error('Research pricing is unavailable.');
       text('network',catalog.network === 'localnet' ? 'Localnet · test USDC' : catalog.network === 'devnet' ? 'Devnet · test USDC' : `${catalog.network} · USDC`);
-      text('unit-price',`${money(unit)} per requested source`);
-      text('pricing-note',`${money(unit)} per requested source. Up to ${maxUnits} sources.`);
       text('signing-key',`Signer ${short(catalog.signing_public_key)}`);
-      $('count').max = maxUnits;
-      $('quote-submit').disabled = false;
-      renderQuote();
     }
     const response = await request('/v1/purchases');
     if (version !== accessVersion) return;
     if (!Array.isArray(response.purchases)) throw new Error('Server returned an invalid purchase history.');
     response.purchases.forEach(ingest);
-    const quotedPurchase = quote && response.purchases.find(purchase => purchase.quote_id === quote.id);
-    if (quotedPurchase && !purchasing) {
-      selectedId = quotedPurchase.id;
-      clearQuote();
-      feedback('request-feedback','Payment request received. Inspect its delivery and settlement below.');
-    }
     if (!selectedId) selectedId = [...purchases.values()].sort((a,b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]?.id;
+    connectionState = 'live';document.body.dataset.connection = connectionState;
     text('connection','Connected · polling purchases');$('connection').classList.add('online');
     text('footer-status','Connected to Motto');render();
   } catch (error) {
     if (version !== accessVersion) return;
+    connectionState = [401,403].includes(error.status) ? 'denied' : 'offline';document.body.dataset.connection = connectionState;renderProgressContext();
     text('connection',error.message);$('connection').classList.remove('online');text('footer-status','Purchase history unavailable');
-    if (!catalog?.services?.research?.pricing) {catalog = undefined;$('quote-submit').disabled = true;}
   } finally {syncing = false;clearTimeout(syncTimer);syncTimer = setTimeout(sync,version === accessVersion ? 3000 : 0);}
 }
-$('request-form').addEventListener('input',() => {clearQuote();feedback('request-feedback');});
-$('request-form').addEventListener('submit',async event => {
-  event.preventDefault();
-  if (quoting || !catalog) return;
-  const input = getInput();
-  if (input.from_year && input.to_year && input.from_year > input.to_year) {feedback('request-feedback','The publication range must start before it ends.',true);return;}
-  const maxSpend = $('max-spend').value.trim();
-  if (!/^[0-9]+(?:\.[0-9]{1,6})?$/.test(maxSpend) || Number(maxSpend) <= 0) {feedback('request-feedback','Enter a positive spending limit with up to six decimal places.',true);return;}
-  quoting = true;clearQuote();$('quote-submit').disabled = true;feedback('request-feedback','Requesting a binding quote…');
-  const version = accessVersion;
-  const fingerprint = JSON.stringify({input,maxSpend});
-  try {
-    const result = await request('/v1/quotes',{method:'POST',body:{service:'research',input,max_spend_usd:maxSpend}});
-    if (version !== accessVersion) return;
-    if (JSON.stringify({input:getInput(),maxSpend:$('max-spend').value.trim()}) !== fingerprint) {feedback('request-feedback','Request changed. Review a new quote.');return;}
-    quote = result.quote || result;
-    if (!quote.id || !quote.input || !quote.expires_at) {clearQuote();throw new Error('Server returned an incomplete quote.');}
-    commandKey = crypto.randomUUID();renderQuote();feedback('request-feedback','Quote ready. Review the price and requirements below.');
-    $('quote-panel').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',block:'nearest'});
-  } catch (error) {if (version === accessVersion) feedback('request-feedback',error.message,true);}
-  finally {quoting = false;$('quote-submit').disabled = !catalog;}
-});
-$('purchase-submit').addEventListener('click',async () => {
-  if (!quote || expired() || purchasing || !catalog?.console?.local_pay) return;
-  purchasing = true;renderQuote();feedback('purchase-feedback','Waiting for Pay.sh authorization and delivery.');
-  const quoteId = quote.id;
-  const version = accessVersion;
-  try {
-    const response = await request('/v1/console/purchases',{method:'POST',body:{quote_id:quoteId}});
-    if (version !== accessVersion) return;
-    const purchase = response.purchase || response;
-    if (!purchase.id) throw new Error('Server did not return a purchase record. Refresh history before retrying.');
-    ingest(purchase);selectedId = purchase.id;render();
-    if (quote?.id === quoteId) {clearQuote();feedback('request-feedback','Purchase submitted. Inspect the result and settlement below.');}
-    await sync();
-  } catch (error) {if (version === accessVersion) {feedback('purchase-feedback',/purchase history/i.test(error.message) ? error.message : `${error.message} Check purchase history before retrying.`,true);await sync();}}
-  finally {purchasing = false;renderQuote();}
-});
-$('copy-command').addEventListener('click',async () => {
-  if (expired()) return;
-  try {await navigator.clipboard.writeText(paymentCommand());feedback('purchase-feedback','Command copied. Run it from your agent’s Pay.sh wallet.');}
-  catch (error) {feedback('purchase-feedback',`Could not copy: ${error.message} Select the command to copy it manually.`,true);}
-});
-$('new-purchase').addEventListener('click',() => {clearQuote();feedback('request-feedback');$('query').focus();$('main').scrollIntoView({block:'start'});});
 $('access-open').addEventListener('click',() => { $('api-key').value = ''; $('access-dialog').showModal(); });
 $('access-form').addEventListener('submit',event => {
-  event.preventDefault();accessVersion++;apiKey = $('api-key').value.trim();$('api-key').value = '';purchases.clear();verification.clear();selectedId = undefined;clearQuote();catalog = undefined;render();$('access-dialog').close();clearTimeout(syncTimer);sync();
+  event.preventDefault();accessVersion++;apiKey = $('api-key').value.trim();$('api-key').value = '';purchases.clear();verification.clear();stateSeenAt.clear();connectionState = 'offline';document.body.dataset.connection = connectionState;selectedId = undefined;catalog = undefined;render();$('access-dialog').close();clearTimeout(syncTimer);sync();
 });
 $('verify').addEventListener('click',verifyReceipt);
 $('download-receipt').addEventListener('click',() => {
@@ -299,5 +230,5 @@ $('download-receipt').addEventListener('click',() => {
 });
 $('raw').addEventListener('click',() => {text('raw-json',JSON.stringify(current(),null,2));$('raw-dialog').showModal();});
 for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click',() => button.closest('dialog').close());
-setInterval(renderQuote,1000);
+setInterval(renderProgressContext,1000);
 render();sync();

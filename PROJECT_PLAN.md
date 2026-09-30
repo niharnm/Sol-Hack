@@ -2,6 +2,8 @@
 
 Motto sells digital results to AI agents within a spending limit chosen by the user. The current service retrieves and validates citation packs from public Crossref metadata. Payment covers retrieval, packaging, and explicit checks. The upstream records are free.
 
+The active purchase flow supports digital research packs only. Physical rentals, device control, and generic condition checks are retired. Unsupported service requests are rejected before payment authorization.
+
 ## Product contract
 
 1. The user chooses a per-purchase spending limit. The service cannot set or increase it.
@@ -25,7 +27,7 @@ Every requested record needs a distinct canonical DOI of valid format and a none
 | Quote and purchase API | Expiring quotes, authenticated operator workspace, persistent records, idempotent purchase requests |
 | Payment integration | Pay.sh x402 `upto` authorization and settlement with explicit unresolved states |
 | Buyer command | User-selected spending permission, quote validation, model-free Devnet SDK or sandbox/mainnet MCP call, no uncapped fallback |
-| Console | Create digital tasks and display quotes, delivery checks, and purchase outcomes |
+| Purchase tracker | Display delivery, purchase progress, settlement state, and signed receipts; task input and spending authorization stay in the buyer or API |
 
 Use the existing Express and Pay.sh dependencies. Node.js 22.13 or newer supplies SQLite support. Configuration defaults to loopback and Solana Devnet. Devnet uses separate local operator and buyer wallets, verifies the RPC genesis hash, and stores state under data/devnet by default. Loopback Devnet needs no API key. Remote binding requires an API key, and remote paid requests need a trusted canonical origin. Mainnet requires an explicit operator signer, RPC, API key, and a trusted public HTTPS origin. The separate localnet sandbox remains available.
 

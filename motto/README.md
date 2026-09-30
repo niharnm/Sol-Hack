@@ -2,6 +2,8 @@
 
 Motto lets an AI agent buy a digital result within a spending limit chosen by its user. The agent obtains a quote, authorizes that task's price through Pay.sh, and receives a deliverable with a signed acceptance record. Motto settles the payment only after the agreed checks pass.
 
+The active purchase flow supports digital research packs only. Physical rentals, device control, and generic condition checks are retired. Unsupported service requests are rejected before payment authorization.
+
 The current service retrieves citation records from Crossref. A request specifies a topic, record count, optional required title terms, and optional publication years. Crossref metadata is public and free. Motto charges for retrieval, packaging, and explicit record checks.
 
 ## Spending and acceptance
@@ -31,7 +33,7 @@ lsof -i:8787
 npm start
 ```
 
-Open `http://127.0.0.1:8787/` for the purchase console. Configure an API key to protect the operator workspace; it is optional for loopback Devnet or sandbox, and required on mainnet or a remote bind. `.env.example` documents the variables, but Node does not load `.env` automatically. Export them in the launching shell, or use Node's `--env-file` support after creating your local configuration.
+Open `http://127.0.0.1:8787/` for the purchase tracker. Tasks and spending authorization originate through the buyer or API; the dashboard tracks delivery and verifies receipts. Configure an API key to protect the operator workspace; it is optional for loopback Devnet or sandbox, and required on mainnet or a remote bind. `.env.example` documents the variables, but Node does not load `.env` automatically. Export them in the launching shell, or use Node's `--env-file` support after creating your local configuration.
 
 ```bash
 node --env-file=.env src/server.js
@@ -54,7 +56,7 @@ lsof -i:8787
 npm run start:sandbox
 ```
 
-On loopback Devnet without an API key, the console can purchase its reviewed quote using the isolated Devnet buyer wallet after test funding. In localnet sandbox mode, the console uses the Pay CLI when installed and no workspace API key is configured. Both flows use test funds. Test-network activity is not evidence of mainnet operation.
+Use the Devnet buyer for purchases on the default network and the MCP buyer for sandbox or explicitly configured mainnet requests. The dashboard shows recorded purchase progress and receipts. Test-network activity is not evidence of mainnet operation.
 
 ## Buy a citation pack
 
@@ -103,7 +105,6 @@ Agents can use the HTTP API with their own Pay tools and enforced payment permis
 | `GET /v1/purchases` | Persistent purchase records, readings, and settlement results |
 | `GET /v1/purchases/:id` | One purchase record |
 | `GET /v1/payment-attempts` | Private authorization journal, including unresolved holds |
-| `POST /v1/console/purchases` | Local-only Devnet or sandbox purchase of a reviewed quote, using test funds; unavailable when an API key is configured |
 | `GET /healthz` | Service health and configured network |
 
 Create a quote without paying. `MAX_SPEND` is your chosen per-purchase limit; the server must not choose it for you. Set `MOTTO_API_KEY` only when the service requires authentication. Avoid shell tracing while credentials are in use.
@@ -157,6 +158,8 @@ Keep `DATA_DIR` and the signing key on durable private storage. `pay-permissions
 npm test
 ```
 
-Tests use controlled upstream responses and payment transports to check quote limits, acceptance, persistence, authentication, replay behavior, and buyer permission handling. They do not prove real mainnet settlement. Mainnet has not been tested or deployed as part of this change. This implementation is a single-service, single-operator system; wider production use still needs operational monitoring and settlement reconciliation.
+Tests use controlled upstream responses and payment transports to check quote limits, acceptance, persistence, authentication, replay behavior, and buyer permission handling. They do not prove real mainnet settlement. Sandbox integration recorded a paid delivery and a zero-charge refund. A later zero-charge settlement returned an SDK error and remained unconfirmed, without a retry. These sandbox records do not establish public-chain finality. Live Devnet settlement and mainnet operation remain unverified. Mainnet has not been tested or deployed as part of this change. This implementation is a single-service, single-operator system; wider production use still needs operational monitoring and settlement reconciliation.
 
 The older device checks, physical rental scripts, slides, benchmark results, catalog material, and recorded sandbox holds are historical artifacts. They do not establish delivery or payment performance for this digital service. Do not use those benchmark numbers as evidence for the current product.
+
+The model-free forwarding runner `demo/run-agent.mjs` accepts the same explicit query and spending-limit arguments as the sandbox/mainnet MCP buyer. `demo/run-research-tests.mjs` runs controlled tests without payments. `demo/verify-proof.mjs` reads stored purchases and verifies the quote and receipt; Devnet also requires RPC transaction confirmation. See [the walk-through](../demo/DEMO_SCRIPT.md).

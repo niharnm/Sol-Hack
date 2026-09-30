@@ -12,7 +12,7 @@ test('console validates topic before spending',async()=>{const res=response();aw
 test('console passes user input as one JSON argument, to fixed test-network endpoint',async()=>{
   const query="$(touch /tmp/nope); ' & batteries";
   const res=response();await consolePurchase({network:'localnet',port:8787,run:async(file,args)=>{
-    assert.equal(file,'npx');assert.ok(args.includes('--sandbox'));assert.ok(args.includes('http://127.0.0.1:8787/v1/rent/research'));assert.deepEqual(JSON.parse(args.at(-1)),{query});return {stdout:'{"hold_id":"abc"}'};
+    assert.equal(file,'npx');assert.ok(args.includes('--sandbox'));assert.ok(args.includes('http://127.0.0.1:8787/v1/buy/research'));assert.deepEqual(JSON.parse(args.at(-1)),{query});return {stdout:'{"hold_id":"abc"}'};
   }})(request({body:{query}}),res);assert.equal(res.body.hold_id,'abc');
 });
 test('console serializes purchases and releases its lock after errors',async()=>{

@@ -25,7 +25,7 @@ export function consolePurchase({ network, port, rpcUrl, run = exec, purchaseDev
     try {
       if (network === 'devnet') return res.json(await purchaseDevnet({query:req.body.query.trim(),port,rpcUrl}));
       const { stdout } = await run('npx', ['--yes', '--package', '@solana/pay', 'pay', '--sandbox', 'curl', '-sS', '-X', 'POST',
-        `http://127.0.0.1:${port}/v1/rent/research`, '-H', 'Content-Type: application/json', '-d', JSON.stringify({ query: req.body.query.trim() })],
+        `http://127.0.0.1:${port}/v1/buy/research`, '-H', 'Content-Type: application/json', '-d', JSON.stringify({ query: req.body.query.trim() })],
         { timeout: 90000, maxBuffer: 1024 * 1024 });
       const receipt = JSON.parse(stdout);
       if (!receipt.hold_id) throw new Error('No receipt');

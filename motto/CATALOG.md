@@ -1,49 +1,30 @@
-# Pay.sh catalog listing
+# Pay.sh catalog draft
 
-Prepared for a PR to github.com/solana-foundation/pay-skills. `service_url` is set to https://motto.tail039d5c.ts.net.
+This directory describes Motto's digital research service. Physical rentals, device control, and generic verification purchases are retired. The current API creates an immutable quote within the caller's spending permission, then executes that quote through Pay.sh x402 `upto`.
 
-## What is here
+`catalog/providers/motto/rentals/` retains its historical directory and catalog name for compatibility. Its contents must describe the current digital quote flow. Neither this directory nor its name establishes an active external listing.
 
-`catalog/providers/motto/rentals/` is exactly what the PR adds. In the pay-skills fork it lands at `providers/motto/rentals/` (FQN `motto/rentals`):
+| Step | Operation | Payment |
+| --- | --- | --- |
+| Discover | `GET /v1/services` | Free |
+| Quote | `POST /v1/quotes` with research input and user-selected `max_spend_usd` | Free |
+| Purchase | `POST /v1/purchases/{quote_id}` with required `Idempotency-Key` | Authorize the accepted quote ceiling, within the user's limit |
+| Inspect | `GET /v1/purchases/{id}` | Workspace access required when configured |
 
-- `PAY.md`: listing frontmatter plus notes for agents. Started with `pay catalog scaffold`, then written by hand.
-- `openapi.json`: reviewed snapshot of `GET /openapi.json` plus docs. The registry rejects remote OpenAPI URLs, so it is committed. `payTo` and `feePayer` are left out on purpose; the live 402 is authoritative. After the per-item pricing change it is regenerated from the live desk, not hand-edited.
+The price is configured per citation record, rather than fixed at one dollar. A complete pack passing its requested count, DOI, title, title-term, and year checks earns its quoted price. Incomplete or failed delivery earns zero. Unconfirmed settlement keeps charge and return amounts unknown.
 
-The directory name must equal `name:` (`rentals`) or `pay catalog check` fails, hence the registry layout.
+Crossref metadata is public and free. The paid service retrieves, packages, and checks records. The checks do not establish semantic relevance, scientific quality, DOI resolution, or full-text access. The signed reading records the operator's acceptance decision, not independent truth.
 
-## Before the PR
+## Before external submission
 
-1. `service_url` in `PAY.md` is https://motto.tail039d5c.ts.net: this Mac, published with `tailscale funnel --bg 8787`. It must stay up (Mac awake, Motto running, Funnel on) until the PR merges, because CI probes it at PR time and again on merge.
-2. Reread the `Status:` paragraph in `PAY.md`. It says the desk is demoed in the Pay.sh sandbox. Edit it if the URL serves a mainnet desk. Never present a sandbox desk as a live mainnet service.
-3. Optional: add `sandbox_service_url: https://...` for a sandbox desk that uses `https://402.surfnet.dev` as its RPC.
+1. Verify the exact service origin, deployed version, network, and API-key access requirements.
+2. Compare this sidecar with the deployed `/openapi.json`.
+3. Confirm quote creation rejects invalid input and prices above caller permission before payment.
+4. Create a quote and inspect its unpaid purchase challenge. The price must equal that quote's ceiling.
+5. Check that the registry supports an authenticated, two-step quote and purchase flow with a quote ID in the paid route. Do not replace that contract with a fixed-price endpoint to satisfy a probe.
+6. Run applicable catalog validation and the appropriate live probe. Record the actual results and any registry limitation.
+7. Verify the external pull request state separately before calling the listing published or merged.
 
-## Commands (run on 2026-09-30, opened https://github.com/solana-foundation/pay-skills/pull/280)
+The event origin was `https://motto.tail039d5c.ts.net`. The saved `service_url` is historical and has not been verified for the current version. Older catalog probes covered retired endpoints and pricing; they do not verify this draft.
 
-```bash
-# 1. Fork and clone outside this repo
-HERE="$(git rev-parse --show-toplevel)"; cd "$(mktemp -d)"
-gh repo fork solana-foundation/pay-skills --clone --default-branch-only && cd pay-skills
-git checkout -b add-motto
-
-# 2. Copy the listing, set the URL, refuse to continue if a placeholder is left
-cp -R "$HERE/motto/catalog/providers/motto" providers/
-F=providers/motto/rentals/PAY.md
-grep -rnE 'MOTTO_PUBLIC_URL|PLACEHOLDER|YOUR_REAL_DOMAIN' providers/motto && echo STOP || echo clean
-
-# 3. Check: static first, then the probe that PR CI runs (the desk must be reachable)
-pay catalog check "$F" --no-probe
-pay catalog check . --files "$F" --currencies USDC,USDT --probe-timeout 15 --probe-concurrency 5 -v --summary-out ../verdict.md
-
-# 4. Commit, push, open the PR with the real verdict in the body
-git add providers/motto && git commit -m "feat(catalog): add Motto" && git push -u origin add-motto
-{ echo "Adds motto/rentals: refundable USDC holds for real-world rentals (charger, hotspot, battery pack, storage, monitor) and a verify-anything check, x402 upto on Solana. Six paid endpoints, one free terms endpoint, OpenAPI snapshot beside PAY.md."; echo; cat ../verdict.md; } > ../body.md
-gh pr create --repo solana-foundation/pay-skills --base main --head "$(gh api user --jq .login):add-motto" --title "feat(catalog): add Motto" --body-file ../body.md
-```
-
-## Status when this was prepared
-
-- Static check passes: `pay catalog check <PAY.md> --no-probe` and `pay catalog check . --no-probe` (run when the listing had six paid endpoints plus the free terms endpoint; the listing now has seven paid endpoints, research first).
-- Live probe passes against https://motto.tail039d5c.ts.net (`pay catalog check . --files providers/motto/rentals/PAY.md --currencies USDC,USDT`, exit 0): all six paid endpoints of that build returned a 402 x402 `upto` USDC challenge, Solana verdict pass 6/6. The probe prints `FAIL expected 402, got 200` for the free `GET /v1/terms`; it is listed as free in the verdict and does not fail the check. That probe ran under the flat $1 pricing, before the research item; rerun both checks after the desk restarts with seven items and per-item ceilings ($0.10 to $10.00) and the sidecar is regenerated.
-- Merge gate: every paid endpoint must return a 402 x402 or MPP challenge for Solana mainnet USDC or USDT. The sandbox desk already advertises the mainnet network id and USDC mint, but it is backed by the Surfpool sandbox RPC, so holds settle only in the Pay.sh sandbox.
-- Keep the desk reachable until the PR is merged.
-- `/openapi.json` summaries in `src/server.js` match the sidecar and are under the registry's 63 char cap.
+The service defaults to public Solana Devnet with isolated test wallets. Live Devnet settlement and mainnet operation remain unverified. Sandbox payment and refund records are test-network evidence only. A registry requiring mainnet settlement or a single static paid operation may require additional work before this listing can be submitted.

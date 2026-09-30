@@ -1,55 +1,36 @@
-# Two-minute digital-service demo
+# Digital research purchase explanation
 
-The buyer needs research sources for a technical brief. Motto delivers a real citation pack, checks explicit acceptance conditions, and returns a signed receipt alongside the payment result.
+“Give your agent a spending limit. Motto quotes the digital work it needs, checks the delivered result, and settles the accepted work.”
 
-## Setup
+The current service retrieves citation packs from Crossref public metadata. The agent requests a topic, count, and optional title-term or publication-year requirements. Crossref metadata is free; the paid service retrieves, packages, and checks it.
 
-Run the Motto server (`cd motto && npm start`). Open http://127.0.0.1:8787 beside a terminal. The console defaults to digital purchases; earlier device demos are available using the sidebar checkbox.
-
-On the partner's laptop with Claude Code access, run this from the repository root:
-
-```bash
-node demo/run-agent.mjs
-```
-
-The launcher uses the local desk on that same computer. Your partner's Claude login does not carry over to your laptop. The model's tool calls appear in the terminal; the console accurately marks buyer telemetry as external.
-
-## Pitch
-
-| Time | Say | Show |
+| Time | Explain | Show |
 | --- | --- | --- |
-| 0:00–0:20 | “An agent is preparing a technical brief. It needs three research sources, and has a one-dollar budget.” | New purchase and its acceptance conditions. |
-| 0:20–0:45 | “It reads the terms and authorizes a maximum payment. Motto now has to deliver.” | Run the agent, or label the direct API fallback as manual. Watch the execution graph. |
-| 0:45–1:10 | “These are actual source records fetched from Crossref, not placeholder results.” | Read one title and show its DOI link in Purchased deliverable. |
-| 1:10–1:35 | “We check that three records arrived, their DOI identifiers are distinct, and each has a title. The delivered pack and checks are signed together.” | Select Evidence check, inspect the checks, then Signed receipt and Verify signature. |
-| 1:35–1:50 | “The full service price is charged only when those checks pass. An incomplete result or provider failure returns the whole authorization.” | Settlement ledger and raw API record. Do not stage a fake failure as a live event. |
-| 1:50–2:00 | “Motto connects an agent's purchase to an inspectable deliverable. Live data, test USDC, on Pay.sh's Solana sandbox.” | Close on the sources and receipt. |
+| 0:00 to 0:25 | The caller chooses a maximum per purchase; the quoted task price can be lower | Buyer request and returned quote |
+| 0:25 to 0:55 | The agent authorizes only that quote through a client scoped to the price, origin, and network | Nonsecret request identifiers and purchase record |
+| 0:55 to 1:20 | All requested citation records must satisfy DOI, title, and requested term or year checks | Delivered records and acceptance results |
+| 1:20 to 1:40 | A complete pack earns the quote price; failed acceptance earns zero when settlement succeeds | Recorded charge and return, or explicit unconfirmed state |
+| 1:40 to 2:00 | The signed reading establishes integrity against the operator key | Tracker receipt verification |
 
-## Direct sandbox purchase — no model required
+The dashboard tracks the result and receipt. Purchase input and spending authorization happen through the buyer or API.
 
-```bash
-npx --yes --package @solana/pay pay --sandbox curl -sS \
-  -X POST http://127.0.0.1:8787/v1/rent/research \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"retrieval augmented generation"}'
-```
-
-Change `query` to another topic to purchase a different source pack. Do not retry while a purchase remains pending. On a funded mainnet setup, the same route uses a real payment, but this local demo remains sandbox. An Exa purchase is a separate provider integration and is not implied by this demo.
-
-## Proof
-
-Unpaid challenge:
+For a funded default Devnet workspace, run from `motto/`:
 
 ```bash
-curl -i -X POST http://127.0.0.1:8787/v1/rent/research \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"retrieval augmented generation"}'
+npm run buy:devnet -- --max-spend 0.50 --count 3 --query "battery recycling" \
+  --required-term recycling --from-year 2020
 ```
 
-Signature verification from the repository root:
+Choose the limit for the task. Neither the service nor the buyer may raise it. Devnet uses isolated test wallets; test tokens have no monetary value. Mainnet operation is unverified. The buyer does not start a model.
+
+From the repository root, verify recorded test-network evidence with:
 
 ```bash
 node demo/verify-proof.mjs
 ```
 
-Crossref metadata is publicly available. The configured $1 price is for Motto's packaged, structurally checked service, not an upstream Crossref charge. The demo does not prove semantic relevance, paper quality, DOI resolution, full-text availability, or independent blockchain finality. A valid signature proves source and integrity, not truth by itself.
+The reader verifies the recorded quote, settlement amounts, and receipt signature. Devnet additionally requires public-RPC transaction confirmation. Sandbox signatures and amounts do not independently prove public-chain finality.
+
+Acceptance does not establish semantic relevance, scientific quality, DOI resolution, or full-text access. The operator's signature is not independent proof of the source data. Unconfirmed settlement must not be described as a successful refund, and must not be retried automatically.
+
+See [the walk-through](DEMO_SCRIPT.md) for setup, sandbox limitations, and commands. Historical fixed-price and physical rental examples are retired.

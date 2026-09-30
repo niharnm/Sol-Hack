@@ -43,7 +43,7 @@ function settlementReceipt(headers, amount, network, payer) {
 
 export function createApp({ pay, store, signReading, signingPublicKey, network = 'localnet', apiKey,
   publicBaseUrl, quoteTtlSeconds = 120, pricing = {}, execute = executeResearchQuote,
-  consolePay = false, consoleDevnet, revision = null, version = '1.0.0', clock = () => Date.now(), consoleRunner = run }) {
+  consolePay = false, consoleDevnet, revision = null, version = '0.9.0', clock = () => Date.now(), consoleRunner = run }) {
   if (!Number.isInteger(quoteTtlSeconds) || quoteTtlSeconds < 30 || quoteTtlSeconds > 240) throw new Error('QUOTE_TTL_SECONDS must be an integer from 30 to 240');
   const publicOrigin = publicBaseUrl ? new URL(publicBaseUrl).origin : undefined;
   if (publicBaseUrl && (new URL(publicBaseUrl).pathname !== '/' || new URL(publicBaseUrl).search || new URL(publicBaseUrl).hash || new URL(publicBaseUrl).username || new URL(publicBaseUrl).password)) throw new Error('PUBLIC_BASE_URL must be an origin without credentials, path, query or fragment');
