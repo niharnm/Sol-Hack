@@ -12,7 +12,7 @@ openapi:
 
 Deposit Desk is a deposit desk for agents renting real-world things for a user they cannot see. The agent holds $1.00 USDC, the desk checks whether the need is already handled, then keeps the hold as the rental or sends it back. Payment uses the x402 `upto` scheme on Solana: the agent authorizes a ceiling of $1.00, the desk settles only what is owed, and the rest returns to the agent automatically. There is no signup and no API key. MPP is not offered.
 
-Status: demo. The desk is currently demoed in the Pay.sh sandbox, which settles in test USDC, and the `network` field in every response says whether a hold settled on `localnet` or `mainnet`. The checks read the device the desk runs on, and each reading is signed with that device's ed25519 key. Readings signed by the rented hardware or by the venue are planned, not built.
+Status: demo. The desk is currently demoed in the Pay.sh sandbox, which settles in test USDC, and the `network` field in every paid response body says which network the desk is configured for, `localnet` in the sandbox or `mainnet`. The checks read the device the desk runs on, and each reading is signed with that device's ed25519 key. Readings signed by the rented hardware or by the venue are planned, not built.
 
 ## Endpoints
 
@@ -31,7 +31,7 @@ Status: demo. The desk is currently demoed in the Pay.sh sandbox, which settles 
 | hotspot | `delivered`: device off the venue network, hotspot rental kept | $1.00 | $0.00 |
 | both | `check_failed`: the check itself errored | $0.00 | $1.00 |
 
-A successful call returns `hold_id`, `item`, `outcome`, `decision` (`kept`, `refunded`, or `settle_failed` when the settlement transaction failed and no money moved, with `settle_error`), `charged_usd`, `returned_usd`, `reason` (the rule that applied), `signed_reading`, `settlement_tx` and `network`. `signed_reading` carries the raw device observation, a hex ed25519 `signature`, and the `devicePublicKey` that `GET /v1/terms` also publishes. A failed check returns an unsigned reading.
+A successful call returns `hold_id`, `item`, `outcome`, `decision` (`kept`, `refunded`, or `settle_failed` when the settlement transaction failed: nothing was charged, the $1.00 ceiling stays held until the x402 timeout releases it, and `settle_error` says why), `charged_usd`, `returned_usd`, `reason` (the rule that applied), `signed_reading`, `settlement_tx` and `network`. `signed_reading` carries the raw device observation, a hex ed25519 `signature`, and the `devicePublicKey` that `GET /v1/terms` also publishes. A failed check returns an unsigned reading.
 
 ## Spend-aware usage
 

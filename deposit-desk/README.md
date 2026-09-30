@@ -17,7 +17,7 @@ does not.
 | Charger | Is the device drawing AC power? | $0.01 check fee, $0.99 back | Power delivered within 30s: $1.00 kept. Never delivered: $0.99 back |
 | Hotspot | Is the device on the venue network? | $0.01 check fee, $0.99 back | $1.00 kept |
 
-Every reading is signed by a device ed25519 key and returned to the agent. Optional receipt memos put
+Every reading is signed by a device ed25519 key and returned to the agent (a reading from a check that itself failed is returned unsigned and costs nothing). Optional receipt memos put
 the reason onchain (`DESK REFUND hold:ab12 charger device_on_AC sig:1f2e3d4c`).
 
 ## How it works
@@ -95,8 +95,10 @@ for fullscreen. Sound is off until you click the Sound button.
 | `GET /openapi.json` | free | OpenAPI with `x-payment-info` offers, for the Pay.sh catalog (listing prepared in `CATALOG.md`) |
 | `GET /healthz` | free | Health check: `ok`, `network`, `uptime_s`, `holds` |
 
-A paid call returns `hold_id`, `item`, `outcome`, `decision` (`kept` or `refunded`), `charged_usd`,
-`returned_usd`, `reason` (the plain English rule), `signed_reading`, `settlement_tx` and `network`.
+A paid call returns `hold_id`, `item`, `outcome`, `decision` (`kept`, `refunded`, or `settle_failed`),
+`charged_usd`, `returned_usd`, `reason` (the plain English rule), `signed_reading`, `settlement_tx` and
+`network`. On `settle_failed` the money fields are null, `settle_error` says why, and the $1.00 ceiling
+stays held until the x402 timeout releases it; the desk does not retry on its own.
 An unpaid call to `/v1/rent/*` gets the `402` with the x402 `upto` offer.
 
 ## Benchmark
@@ -122,7 +124,7 @@ $0.19 in that row.
 
 ## Status and honesty
 
-Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars of SOL for network fees.
+Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch (`NETWORK`, `RPC_URL`, `OPERATOR_KEY`) plus a few dollars of SOL for network fees. The mainnet path is configured but has not been exercised end to end yet.
 
 The desk runs on the demo laptop because the checks read that laptop. In production the check runs on
 the rented hardware, and the charger or venue hardware signs the reading instead of the desk's device

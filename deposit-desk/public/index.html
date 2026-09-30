@@ -484,8 +484,10 @@
     setText($('more'), rest.length > MAX_ROWS ? `+ ${rest.length - MAX_ROWS} earlier holds` : '');
   }
 
+  const MAX_HOLDS = 500; // same cap as the desk, so the page never keeps more than /v1/holds does
   function render(flash = null) {
     const list = [...holds.values()].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+    for (const h of list.splice(MAX_HOLDS)) holds.delete(h.id);
     renderStats(list);
     renderHero(list[0], flash);
     renderList(list.slice(1), flash);
@@ -634,6 +636,8 @@
     render();
     ready = true;
     queued.splice(0).forEach(h => apply(h, 'sse'));
+    // A desk that was still starting answers the first fetch with an error: try again shortly.
+    if (t.status === 'rejected' || l.status === 'rejected') setTimeout(resync, 3000);
   });
   // Keep the elapsed timer on a pending hold ticking.
   setInterval(() => {

@@ -136,7 +136,8 @@ Nithin: "Now the need is real. The laptop was on battery, power arrived, so the 
 
 Edge cases:
 - Nobody plugs in within 30 seconds: the desk charges the $0.01 fee and returns $0.99, because power
-  never arrived. Narrate it as the third outcome: "If the power never comes, the agent does not pay."
+  never arrived. Narrate it as the third outcome: "If the power never comes, the agent pays one cent for
+  the check, nothing for the charger."
 - The volunteer plugs in too early, before the desk reads the battery: the desk sees AC power and
   refunds. Say "that is the first case again" and move on to beat 4.
 
@@ -187,7 +188,8 @@ of SOL for network fees. Every new check is a new line in the catalog: locker, p
 The desk has settled [N] holds and returned [$X] to agents today. The check changes. The money does
 not."
 
-Read [N] and [$X] off the counters on screen.
+Read [N] and [$X] off the counters on screen. Do not say mainnet has been run: the mainnet path is
+configured but has not been exercised end to end.
 
 TODO before demo: the plan says to close on "listed on Pay.sh". Say that only if the catalog PR is
 merged. If it is open say "submitted to the Pay.sh catalog". Otherwise say "ready for the Pay.sh
@@ -248,8 +250,10 @@ Plus the live counters on the dashboard. No other numbers unless they are on scr
   hidden truth, and every run gets the same 50 scenarios. The no-desk runs see only text context, the
   way a cloud agent does, and the desk run can also hold. Rerun it with `npm run bench`.
 - **What if something breaks mid-hold?** If the check fails the desk reports `check_failed` and charges
-  nothing, never the $1.00. If the handler throws, pay-kit still seals the hold and
-  refunds. If settlement fails the desk reports `settle_failed` and keeps the reading.
+  nothing, never the $1.00. If the desk itself crashes after the hold opened, it settles the hold at
+  zero on the way out; if that settle fails too, the escrow returns to the agent when the x402 offer
+  times out (300 seconds). If settlement fails the desk reports `settle_failed`, keeps the reading, and
+  does not retry on its own.
 - **How does an agent find the desk?** It reads `GET /v1/terms`. `GET /openapi.json` carries the x402
   payment offers for the Pay.sh catalog, so agents can find it with `pay skills search` once the
   listing is merged (PR link: TODO before submit).

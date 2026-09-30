@@ -104,8 +104,8 @@ Results are in `deposit-desk/bench/results.json` (`ranAt` 2026-09-30T18:45:33.37
 
 - An agent buying what it needs to keep working: a long-running Claude job on a laptop at low battery
   rents a charger so the task finishes.
-- A consumer's personal agent rents a charger, battery pack, hotspot or locker on the go, and never
-  pays for something the user already has.
+- A consumer's personal agent rents a charger, battery pack, hotspot or locker on the go, and pays
+  only the 1 cent check fee when the user already has it.
 - Business: 1 cent per check plus a share of kept rentals. Venues list their own checks.
 
 ## Why Pay.sh and Solana
@@ -118,7 +118,7 @@ Results are in `deposit-desk/bench/results.json` (`ranAt` 2026-09-30T18:45:33.37
 
 ## Honest limits
 
-- Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars of SOL for network fees.
+- Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars of SOL for network fees. The mainnet path is configured but has not been exercised end to end yet.
 - The desk runs on the demo laptop because the checks read that laptop. In production the check runs
   on the rented hardware, and the hardware signs the reading instead of the desk's device key.
 - The benchmark uses generated scenarios and simulated device states (see the note above).
