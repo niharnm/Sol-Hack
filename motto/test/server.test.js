@@ -9,6 +9,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createAdminAuth } from '../src/admin-auth.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'desk-server-'));
@@ -17,7 +18,7 @@ let desk;
 
 // Real keys and mainnet settings from the caller's shell never reach the test servers.
 const env = { ...process.env };
-for (const name of ['NETWORK', 'RPC_URL', 'OPERATOR_KEY', 'RECIPIENT', 'RECEIPT_KEY', 'RECEIPT_RPC_URL', 'CHARGER_WAIT_MS']) delete env[name];
+for (const name of ['NETWORK', 'RPC_URL', 'OPERATOR_KEY', 'RECIPIENT', 'RECEIPT_KEY', 'RECEIPT_RPC_URL', 'CHARGER_WAIT_MS', 'MOTTO_ADMIN_TOKEN_FILE']) delete env[name];
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -184,6 +185,53 @@ test('detailed holds and events reject public requests while redacted stats stay
   const stats = await fetch(`${desk.base}/v1/public/stats`, { headers: publicHeaders });
   assert.equal(stats.status, 200);
   assert.deepEqual(await stats.json(), { total: 3, counts: { interrupted: 1, refunded: 1, kept: 1 } });
+});
+
+test('a one-time pairing link creates an HttpOnly browser session', async () => {
+  const auth = createAdminAuth({ dataDir: dir, env: { MOTTO_ADMIN_TOKEN: 'test-admin-token' } });
+  const pairing = auth.createPairing();
+  const publicHeaders = { 'x-forwarded-host': 'motto.example', 'x-forwarded-proto': 'https', 'x-forwarded-for': '203.0.113.10', origin: 'https://motto.example' };
+  const paired = await fetch(`${desk.base}/v1/admin/pair`, {
+    method: 'POST',
+    headers: { ...publicHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ code: pairing.code }),
+  });
+  assert.equal(paired.status, 200);
+  const setCookie = paired.headers.get('set-cookie');
+  assert.match(setCookie, /^__Host-motto_admin=/);
+  assert.match(setCookie, /HttpOnly/);
+  assert.match(setCookie, /Secure/);
+  assert.match(setCookie, /SameSite=Strict/);
+  const cookie = setCookie.split(';')[0];
+
+  const session = await fetch(`${desk.base}/v1/admin/session`, { headers: { ...publicHeaders, cookie } });
+  assert.equal(session.status, 200);
+  assert.equal((await session.json()).via, 'session');
+  const holds = await fetch(`${desk.base}/v1/holds`, { headers: { ...publicHeaders, cookie } });
+  assert.equal(holds.status, 200);
+
+  const replay = await fetch(`${desk.base}/v1/admin/pair`, {
+    method: 'POST',
+    headers: { ...publicHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ code: pairing.code }),
+  });
+  assert.equal(replay.status, 401);
+});
+
+test('pairing rejects a mismatched browser origin', async () => {
+  const auth = createAdminAuth({ dataDir: dir, env: { MOTTO_ADMIN_TOKEN: 'test-admin-token' } });
+  const pairing = auth.createPairing();
+  const response = await fetch(`${desk.base}/v1/admin/pair`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-forwarded-host': 'motto.example',
+      'x-forwarded-proto': 'https',
+      origin: 'https://attacker.example',
+    },
+    body: JSON.stringify({ code: pairing.code }),
+  });
+  assert.equal(response.status, 403);
 });
 
 test('unknown items and unknown /v1 routes return JSON 404', async () => {

@@ -6,10 +6,11 @@ import express from 'express';
 import { DEVNET_RPC, devnetSigner, assertDevnet } from './devnet.js';
 import { execFileSync } from 'node:child_process';
 import { consolePurchase, localConsole } from './console-purchase.js';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
+import { createAdminAuth, sessionTokenFromCookie } from './admin-auth.js';
 import { devicePublicKey } from './checks.js';
 import { ITEMS, MAX_HOLD_USD, publicTerms } from './items.js';
 import { postReceipt } from './receipt.js';
@@ -31,7 +32,7 @@ const SETTLE_FAILED_REASON = 'Settlement was not confirmed: charge and return am
 // Statuses a retried request may be answered from. A failed or interrupted settlement cannot be
 // retried on the same hold (pay-kit memoizes settle()), so those retries open a fresh one.
 const REPLAYABLE = new Set(['checking', 'waiting_for_power', 'waiting_for_delivery', 'judging', 'fetching', 'validating', 'settling', 'kept', 'refunded']);
-const ADMIN_TOKEN = process.env.MOTTO_ADMIN_TOKEN;
+const adminAuth = createAdminAuth({ dataDir: DATA_DIR });
 
 const operatorSigner = await Signer.env('OPERATOR_KEY') ?? (NETWORK === 'devnet' ? Signer.from(await devnetSigner('operator')) : undefined);
 const pay = await createPayKit({
@@ -177,17 +178,33 @@ app.get('/v1/public/stats', (_req, res) => {
   res.json({ total: holds.length, counts });
 });
 
-function sameToken(actual, expected) {
-  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
-  const left = createHash('sha256').update(actual).digest();
-  const right = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(left, right);
+function requestOrigin(req) {
+  const proto = String(req.headers['x-forwarded-proto'] ?? req.protocol ?? 'http').split(',')[0].trim();
+  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim();
+  return `${proto}://${host}`;
+}
+
+function sessionToken(req) {
+  return sessionTokenFromCookie(req.get('cookie'));
+}
+
+function sessionCookie(req, token, maxAgeSeconds) {
+  const secure = requestOrigin(req).startsWith('https://');
+  const name = secure ? '__Host-motto_admin' : 'motto_admin_session';
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure ? '; Secure' : ''}`;
+}
+
+function clearSessionCookies() {
+  return [
+    '__Host-motto_admin=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
+    'motto_admin_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
+  ];
 }
 
 function mayReadPrivateRecords(req) {
   if (localConsole(req, NETWORK, PORT)) return true;
   const token = /^Bearer (.+)$/i.exec(req.get('authorization') ?? '')?.[1];
-  return sameToken(token, ADMIN_TOKEN);
+  return adminAuth.verifyBearer(token) || Boolean(adminAuth.verifySession(sessionToken(req)));
 }
 
 function requirePrivateRecordAccess(req, res, next) {
@@ -195,6 +212,36 @@ function requirePrivateRecordAccess(req, res, next) {
   res.setHeader('Cache-Control', 'no-store');
   return res.status(401).json({ error: 'private_records_require_local_or_admin_access' });
 }
+
+app.post('/v1/admin/pair', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.get('origin') !== requestOrigin(req)) return res.status(403).json({ error: 'pairing_origin_mismatch' });
+  try {
+    const session = adminAuth.consumePairing(req.body?.code);
+    res.setHeader('Set-Cookie', sessionCookie(req, session.token, Math.floor((session.expires_at_ms - Date.now()) / 1000)));
+    return res.json({ authenticated: true, expires_at: new Date(session.expires_at_ms).toISOString() });
+  } catch (error) {
+    const status = ['invalid_pairing_code', 'invalid_or_expired_pairing_code'].includes(error.code) ? 401 : 400;
+    return res.status(status).json({ error: error.code ?? 'pairing_failed' });
+  }
+});
+
+app.get('/v1/admin/session', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (localConsole(req, NETWORK, PORT)) return res.json({ authenticated: true, via: 'loopback' });
+  const bearer = /^Bearer (.+)$/i.exec(req.get('authorization') ?? '')?.[1];
+  if (adminAuth.verifyBearer(bearer)) return res.json({ authenticated: true, via: 'bearer' });
+  const session = adminAuth.verifySession(sessionToken(req));
+  if (!session) return res.status(401).json({ authenticated: false });
+  return res.json({ authenticated: true, via: 'session', expires_at: new Date(session.expires_at_ms).toISOString() });
+});
+
+app.post('/v1/admin/logout', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  adminAuth.revokeSession(sessionToken(req));
+  res.setHeader('Set-Cookie', clearSessionCookies());
+  res.json({ authenticated: false });
+});
 
 app.get('/v1/holds', requirePrivateRecordAccess, (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');

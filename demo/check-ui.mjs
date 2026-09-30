@@ -22,6 +22,7 @@ const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://localhost').pathname;
  const json=(data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
  if(path==='/v1/terms')return json(terms);
+ if(path==='/v1/admin/session')return recordsPrivate?json({authenticated:false},401):json({authenticated:true,via:'fixture'});
  if(recordsPrivate&&(path==='/v1/holds'||path==='/v1/events'))return json({error:'private_records_require_local_or_admin_access'},401);
  if(path==='/v1/holds')return json({holds:records});
  if(path.startsWith('/v1/holds/'))return json(records.find(h=>h.id===decodeURIComponent(path.split('/').at(-1)))??{});

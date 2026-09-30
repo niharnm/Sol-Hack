@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const holds = new Map(), eventLog = [];
 const visible = () => [...holds.values()].filter(h=>h.item!=='research').sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
-let terms, selectedId, inspected = 'receipt', live = false, ready = false, followNewest = true;
+let terms, selectedId, inspected = 'receipt', live = false, ready = false, followNewest = true, adminAuthenticated = false, events;
 const queue = [], verification = new Map();
 let deliveryKey = '', previousSelection;
 const statusNames = {checking:'Funds authorized',fetching:'Provider in progress',validating:'Validating result',settling:'Settling payment',kept:'Delivered',refunded:'Funds returned',settle_failed:'Payment unconfirmed',interrupted:'Interrupted'};
@@ -212,18 +212,45 @@ async function verifyReading() {
   } catch(e) {verification.set(id,'Not verified: '+e.message+'. This browser may not support signature verification.');}
   if(selectedId===id)inspect();
 }
-function connection(ok) {if(privateRecords){live=false;document.body.dataset.stream='offline';text('connection','● private activity');$('connection').classList.remove('online');text('footer-status','Purchase activity is private on this connection');renderProgressContext();return;}live=ok;document.body.dataset.stream=ok?'live':'offline';renderProgressContext();text('connection',ok?'● stream live':'● reconnecting');$('connection').classList.toggle('online',ok);text('footer-status',ok?'Purchases update live':'Disconnected · showing last received records');}
-async function sync() {
-  const results=await Promise.allSettled([get('/v1/terms'),get('/v1/holds')]);
+function connection(ok) {if(privateRecords){live=false;document.body.dataset.stream='offline';text('connection','● private activity');$('connection').classList.remove('online');text('footer-status','Pair this browser to view live activity');renderProgressContext();return;}live=ok;document.body.dataset.stream=ok?'live':'offline';renderProgressContext();text('connection',ok?'● stream live':'● reconnecting');$('connection').classList.toggle('online',ok);text('footer-status',ok?'Purchases update live':'Disconnected · showing last received records');}
+async function sync(includePrivate=adminAuthenticated) {
+  const requests=[get('/v1/terms')];if(includePrivate)requests.push(get('/v1/holds'));
+  const results=await Promise.allSettled(requests);
   if(results[0].status==='fulfilled'){
     terms=results[0].value;
     text('network',terms.network==='localnet'?'SOLANA · LOCALNET':terms.network==='devnet'?'SOLANA · DEVNET':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
 
   }
-  if(results[1].status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
-  if(results[1].status==='rejected'&&[401,403].includes(results[1].reason.status)){privateRecords=true;events.close();connection(false);}
+  if(results[1]?.status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
+  if(results[1]?.status==='rejected'&&[401,403].includes(results[1].reason.status)){events?.close();setAdminState(false,'This browser session expired. Create a new five-minute pairing link on the machine running Motto.');$('pairing-dialog').showModal();connection(false);}
   ready=true;for(const h of queue.splice(0))ingest(h,'live');render();
-  if(results.some(r=>r.status==='rejected'&&![401,403].includes(r.reason.status))){text('footer-status','Unable to load purchase updates. Reconnecting…');setTimeout(sync,5000);}
+  if(results.some(r=>r.status==='rejected'&&![401,403].includes(r.reason.status))){text('footer-status','Unable to load purchase updates. Reconnecting…');setTimeout(()=>sync(includePrivate),5000);}
+}
+function setAdminState(authenticated, message) {
+  adminAuthenticated=authenticated;privateRecords=!authenticated;$('admin-session').classList.toggle('authenticated',authenticated);
+  text('admin-session',authenticated?'Admin paired':'Admin access');$('logout-admin').hidden=!authenticated;
+  if(message)text('pairing-message',message);
+}
+async function pairFromFragment() {
+  const params=new URLSearchParams(location.hash.slice(1)),code=params.get('pair');
+  if(!code)return;
+  history.replaceState(null,'',location.pathname+location.search);
+  const response=await fetch('/v1/admin/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error??'Pairing failed');
+}
+function connectEvents() {
+  if(events)events.close();events=new EventSource('/v1/events');let opened=false;
+  events.onopen=()=>{connection(true);if(opened)sync(true);opened=true;};events.onerror=async()=>{connection(false);const session=await fetch('/v1/admin/session').catch(()=>undefined);if(!session?.ok){events.close();setAdminState(false,'This browser session expired. Create a new five-minute pairing link on the machine running Motto.');$('pairing-dialog').showModal();}};
+  events.onmessage=e=>{try{const h=JSON.parse(e.data);if(!ready)queue.push(h);else{ingest(h,'live');render();}}catch{}};
+}
+async function boot() {
+  let pairingError;
+  try{await pairFromFragment();}catch(error){pairingError=error.message;}
+  const session=await fetch('/v1/admin/session').catch(()=>undefined);
+  if(session?.ok){setAdminState(true);if($('pairing-dialog').open)$('pairing-dialog').close();connectEvents();await sync(true);return;}
+  setAdminState(false,pairingError?`Pairing failed: ${pairingError}`:'Purchase records are private. On the machine running Motto, create a five-minute pairing link:');
+  await sync(false);$('pairing-dialog').showModal();connection(false);
 }
 document.querySelectorAll('[data-node]').forEach(n=>n.onclick=()=>{inspected=n.dataset.node;inspect();});
 
@@ -231,9 +258,10 @@ $('open-receipt').onclick=()=>{inspected='receipt';inspect();$('receipt-dialog')
 $('verify').onclick=verifyReading;$('raw').onclick=()=>$('raw-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 $('fullscreen').onclick=()=>{const promise=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();promise?.catch(()=>{});};
-const events=new EventSource('/v1/events');let opened=false;
-events.onopen=()=>{connection(true);if(opened)sync();opened=true;};events.onerror=()=>connection(false);events.onmessage=e=>{try{const h=JSON.parse(e.data);if(!ready)queue.push(h);else{ingest(h,'live');render();}}catch{}};
-render();sync();
+$('admin-session').onclick=()=>$('pairing-dialog').showModal();
+$('logout-admin').onclick=async()=>{await fetch('/v1/admin/logout',{method:'POST'});events?.close();setAdminState(false,'This browser is no longer paired. Create a new five-minute pairing link on the machine running Motto.');$('pairing-dialog').showModal();};
+render();boot();
+addEventListener('hashchange',()=>{if(new URLSearchParams(location.hash.slice(1)).has('pair'))boot();});
 setInterval(()=>{if(!document.hidden)renderProgressContext();},1000);
 
 $('download-receipt').onclick=()=>{

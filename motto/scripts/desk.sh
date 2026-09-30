@@ -5,6 +5,7 @@
 #                             from this checkout, so edits to src/ restart the desk and the public URL
 #                             always serves the repo; public/ and bench/results.json are read per request
 #   scripts/desk.sh status    repo HEAD next to the commit the local and public URLs report
+#   scripts/desk.sh pair      create a five-minute browser pairing link for the public console
 #   scripts/desk.sh stop      stop the desk (the Funnel stays on and answers 502 until restart)
 #
 # Environment passes through to the server (NETWORK, OPERATOR_KEY, ...). Default is the Devnet desk; set NETWORK=localnet for the sandbox.
@@ -48,6 +49,7 @@ stop() {
 start() {
   cd "$MOTTO_DIR"
   mkdir -p data
+  node scripts/motto.mjs setup
   if [ -n "$(listener_pids)" ]; then
     echo "something already listens on :$PORT (pid $(listener_pids | tr '\n' ' ')); run stop or restart" >&2
     return 1
@@ -65,6 +67,11 @@ start() {
   echo "desk did not answer /healthz within 10s; last log lines:" >&2
   tail -n 20 "$LOG" >&2
   return 1
+}
+
+pair() {
+  cd "$MOTTO_DIR"
+  node scripts/motto.mjs pair --url "$PUBLIC_URL" --open
 }
 
 funnel() {
@@ -101,7 +108,8 @@ status() {
 case "${1:-restart}" in
   restart) stop; start; funnel ;;
   start)   start; funnel ;;
+  pair)    pair ;;
   stop)    stop ;;
   status)  status ;;
-  *) echo "usage: scripts/desk.sh [restart|start|stop|status]" >&2; exit 2 ;;
+  *) echo "usage: scripts/desk.sh [restart|start|pair|stop|status]" >&2; exit 2 ;;
 esac

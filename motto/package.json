@@ -1,14 +1,29 @@
 {
-  "name": "motto",
-  "version": "0.9.0",
+  "name": "@niharnm/motto",
+  "version": "0.10.0",
   "description": "Virtual purchase intermediary for AI agents: coordinate a supported provider, verify delivery, and settle an x402 upto payment on Solana.",
   "main": "src/server.js",
+  "bin": {
+    "motto": "scripts/motto.mjs"
+  },
+  "files": [
+    ".env.example",
+    "README.md",
+    "catalog/",
+    "pay-permissions.yml",
+    "public/",
+    "scripts/",
+    "src/"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "start": "node src/server.js",
+    "setup": "node scripts/motto.mjs setup",
+    "pair": "node scripts/motto.mjs pair",
+    "admin:status": "node scripts/motto.mjs status",
+    "start": "node scripts/motto.mjs start",
     "bench": "node bench/generate.js && node bench/run.js",
     "buyer": "node buyer/buy.js",
     "tunnel": "cloudflared tunnel --url http://127.0.0.1:8787",
