@@ -268,9 +268,12 @@ Goal: a real, rerunnable result that shows we are technically better than a fron
 
 ## 14. Honesty rules for the demo and slides
 
-- Live demo runs in the Pay.sh sandbox so nothing flakes, and we say so in one line: "Live demo is in
-  Pay.sh's sandbox for reliability; here is the same flow on Solana mainnet with real USDC." Show one
-  mainnet Explorer transaction.
+- The project is built and demoed in the Pay.sh sandbox (test USDC, test SOL). On stage, one line:
+  "Live demo runs in Pay.sh's sandbox. Going live on mainnet is a config switch plus a few dollars of
+  SOL for network fees."
+- Mainnet proof transaction is optional: only if the desk wallet gets ~0.02 SOL (ask a sponsor).
+- Going live on Pay.sh after the hackathon needs: ~0.02 SOL in the desk wallet (fees), a permanent
+  https address (named tunnel or hosting), and the pay-skills catalog PR.
 - No invented statistics. Every number is measured by us (benchmark, settlement time, fees, live
   counters) or cited from a source.
 - Things too slow for stage are shown as a recorded run or a transaction link, labelled as such.
