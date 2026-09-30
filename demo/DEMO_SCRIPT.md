@@ -96,8 +96,7 @@ cloudflared tunnel --url http://127.0.0.1:8787
 
 Screen: slide 1. Press right to slide 2 (the loop) for the last 5 seconds.
 
-Nithin: "Agents are starting to spend money in the real world. They should never pay for something that
-already happened. We built the desk that fixes that."
+Nithin: "An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest."
 
 Nihar: nothing to run. Laptop on AC power, desk running.
 

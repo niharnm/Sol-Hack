@@ -80,11 +80,9 @@ summarized in prep/.
 
 ## 3. The product
 
-**One line:** a deposit desk for agents buying things in the real world. The agent puts $1 USDC on
-hold, the desk checks whether the need is already handled, then keeps the money as the rental or sends
-it back.
+**One line:** An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
 
-**Tagline:** "Agents only pay for things that actually happened."
+**Tagline:** "An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest."
 
 **Positioning:** the desk is the company. The charger is the first check, the hotspot the second.
 The check changes, the money does not. We show finished cases, not a catalog.
@@ -231,7 +229,7 @@ Nithin owns making it stage ready:
 Judges and the room decide together; at the YC hackathon the winners were the demos that got the most
 applause. So the demo is built for energy and clarity, and every beat must make sense to a non-expert.
 
-1. Hook (15s): "Agents are starting to spend money in the real world. They should never pay for something that already happened."
+1. Hook (15s): "An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest."
 2. Refund (35s): ask the room "Is this laptop plugged in? Should the agent pay?" Claude (cloud agent, pay tools only) holds $1, desk checks, $0.99 slides back. Coin sound.
 3. Keep (40s): unplug, hand the cable to someone in the audience. Claude holds $1, audience member plugs in, dashboard flips to KEPT. Cash register sound.
 4. Second check (20s): hotspot, same desk, different check. "The check changes. The money does not."

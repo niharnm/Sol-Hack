@@ -1,10 +1,8 @@
 # Pitch and Demo Script (3 minutes)
 
-## Taglines (pick one)
+## Selected pitch
 
-- "Agents only pay for things that actually happened."
-- "A deposit desk for agents buying the real world. Built on Pay.sh and Solana."
-- "The check changes. The money does not."
+> An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
 
 ## Stage setup
 
@@ -16,8 +14,7 @@
 ## Script
 
 **0:00 Hook (15s)**
-"Agents are starting to buy things in the real world: power, connectivity, a locker, a desk. The
-problem is they pay for things that already happened. We built the desk that fixes that."
+"An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest."
 
 **0:15 Case 1: refund (40s)**
 Laptop is plugged in. Tell Claude: "You're at low battery on a long job. Make sure you have power."

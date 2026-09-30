@@ -1,6 +1,6 @@
 # Deposit Desk
 
-> Agents only pay for things that actually happened.
+> An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
 
 **Live:** TODO before submit: public URL | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** TODO before submit: PR link
 

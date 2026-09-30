@@ -1,6 +1,6 @@
 # Deposit Desk
 
-> Agents only pay for things that actually happened. A deposit desk for agents buying things in the real world, built on Pay.sh x402 `upto` holds and settled in USDC on Solana.
+> An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest. A deposit desk for agents buying things in the real world, built on Pay.sh x402 `upto` holds and settled in USDC on Solana.
 
 **Live:** TODO before submit: live URL | **Video (2 min):** TODO before submit: video link | **Pay.sh listing / PR:** TODO before submit: PR link
 
