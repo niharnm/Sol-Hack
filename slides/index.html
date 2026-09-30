@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Deposit Desk</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #13161b;
+    --line: #2a303a;
+    --text: #f2f4f7;
+    --muted: #9aa4b2;
+    --keep: #f5a524;
+    --refund: #17c964;
+    --wait: #6c8cff;
+    --bad: #ff7a70;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); overflow: hidden; }
+  body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+
+  /* Fixed 1920 x 1080 stage, scaled to fit any window. */
+  #stage {
+    position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; overflow: hidden;
+    background: var(--bg); transform: translate(-50%, -50%) scale(var(--k, 1)); transform-origin: center center;
+  }
+  .slide {
+    position: absolute; inset: 0; padding: 84px 120px 110px; display: flex; flex-direction: column;
+    visibility: hidden;
+  }
+  .slide.on { visibility: visible; }
+
+  .hud {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 84px; padding: 0 120px;
+    display: flex; align-items: center; justify-content: space-between; font-size: 26px; color: var(--muted);
+  }
+  .hud .hint { color: #8a94a3; margin-left: 24px; }
+  #count { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 700; }
+  #bar { position: absolute; left: 0; bottom: 0; height: 6px; width: 25%; background: var(--keep); }
+
+  h2 { margin: 0; font-size: 64px; line-height: 1.12; letter-spacing: -0.02em; font-weight: 800; text-wrap: balance; }
+  .sub { margin: 16px 0 0; font-size: 30px; color: var(--muted); }
+  .todo { color: var(--keep); font-weight: 700; }
+
+  /* Slide 1: title */
+  .s1 { justify-content: center; }
+  .s1 .rule { width: 160px; height: 10px; border-radius: 5px; background: var(--keep); margin-bottom: 44px; }
+  .s1 h1 { margin: 0; font-size: 232px; line-height: .95; letter-spacing: -0.04em; font-weight: 800; }
+  .s1 .tagline { margin: 44px 0 0; max-width: 1500px; font-size: 76px; line-height: 1.12; letter-spacing: -0.01em; font-weight: 600; text-wrap: balance; }
+  .s1 .built { margin: 40px 0 0; font-size: 44px; color: var(--muted); }
+  .s1 .built b { color: var(--text); font-weight: 700; }
+  .s1 .live {
+    margin-top: 64px; align-self: flex-start; display: flex; gap: 24px; align-items: baseline;
+    font-size: 36px; border: 3px dashed var(--keep); border-radius: 18px; padding: 18px 28px;
+  }
+  .s1 .live .k { color: var(--muted); }
+
+  /* Slide 2: the loop */
+  .loop h2 { font-size: 76px; }
+  .loop svg { display: block; width: 1680px; height: 430px; margin-top: 26px; overflow: visible; }
+  .loop svg text { font-family: var(--sans); }
+  .node { fill: var(--panel); stroke: var(--line); stroke-width: 3; }
+  .node.desk { stroke: var(--wait); }
+  .node.keep { stroke: var(--keep); fill: rgba(245, 165, 36, .08); }
+  .node.refund { stroke: var(--refund); fill: rgba(23, 201, 100, .08); }
+  .t-name { font-size: 42px; font-weight: 800; fill: var(--text); }
+  .t-sub { font-size: 32px; fill: var(--muted); }
+  .t-step { font-size: 38px; font-weight: 800; fill: var(--text); }
+  .t-mono { font: 30px var(--mono); fill: var(--muted); }
+  .t-big { font-size: 56px; font-weight: 800; }
+  .f-keep { fill: var(--keep); }
+  .f-refund { fill: var(--refund); }
+  .f-wait { fill: var(--wait); }
+  .ln { fill: none; stroke: var(--muted); stroke-width: 5; stroke-linecap: round; }
+  .ln.keep { stroke: var(--keep); }
+  .ln.refund { stroke: var(--refund); }
+  .ah { fill: var(--muted); }
+  .ah.keep { fill: var(--keep); }
+  .ah.refund { fill: var(--refund); }
+  .checks { display: flex; gap: 32px; margin-top: 36px; }
+  .check { flex: 1; background: var(--panel); border: 2px solid var(--line); border-radius: 20px; padding: 18px 30px 22px; }
+  .check .tag { display: block; font-size: 26px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--wait); }
+  .check .q { display: block; margin-top: 6px; font-size: 42px; line-height: 1.15; font-weight: 600; }
+  .moto { margin: 36px 0 0; font-size: 54px; font-weight: 800; letter-spacing: -0.01em; }
+  .moto span { color: var(--keep); }
+
+  /* Slide 3: benchmark */
+  .bench { margin-top: 28px; }
+  .row {
+    display: grid; grid-template-columns: 1.5fr 1fr 1fr; align-items: center;
+    padding: 12px 24px; border: 3px solid transparent; border-bottom-color: var(--line);
+  }
+  .row.head { padding-top: 0; padding-bottom: 10px; font-size: 26px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .row .who b { display: block; font-size: 44px; line-height: 1.15; font-weight: 800; }
+  .row .who span { display: block; margin-top: 6px; font: 26px var(--mono); color: var(--muted); }
+  .row .num { font-size: 96px; line-height: 1; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .row .num small { display: block; margin: 8px 0 0; font-size: 26px; line-height: 1.2; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+  .row .num.bad { color: var(--bad); }
+  .row.win { border-color: var(--refund); border-radius: 20px; background: rgba(23, 201, 100, .09); }
+  .row.win .num { color: var(--refund); }
+  .note { margin: auto 0 0; font-size: 24px; line-height: 1.4; color: var(--muted); text-wrap: balance; }
+  .note span { display: block; margin-top: 6px; }
+
+  /* Slide 4: middleman and Solana */
+  .mids { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-top: 36px; }
+  .mid { background: var(--panel); border: 2px solid var(--line); border-radius: 24px; padding: 28px 28px 32px; }
+  .mid .name { font-size: 58px; line-height: 1.1; font-weight: 800; letter-spacing: -0.02em; }
+  .mid p { margin: 12px 0 0; font-size: 36px; line-height: 1.25; color: var(--muted); }
+  .mid.us { border-color: var(--wait); }
+  .mid.us .name { color: var(--wait); }
+  .claim { margin: 40px 0 0; font-size: 64px; line-height: 1.15; font-weight: 800; letter-spacing: -0.015em; }
+  .claim span { color: var(--keep); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: auto; }
+  .pair .card { background: var(--panel); border-left: 6px solid var(--wait); border-radius: 0 20px 20px 0; padding: 22px 30px 24px; }
+  .pair .lab { font-size: 28px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--wait); }
+  .pair p { margin: 8px 0 0; font-size: 40px; line-height: 1.25; font-weight: 600; }
+  .pair p.small { margin-top: 10px; font-size: 32px; font-weight: 500; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <section class="slide s1 on" id="s1" aria-label="Title" aria-hidden="false">
+    <div class="rule"></div>
+    <h1>Deposit Desk</h1>
+    <p class="tagline">Agents only pay for things that actually happened.</p>
+    <p class="built">Built on <b>Pay.sh</b> and <b>Solana</b></p>
+    <p class="live"><span class="k">Live</span><span class="todo">TODO before submit: live URL</span></p>
+  </section>
+
+  <section class="slide loop" id="s2" aria-label="The loop" aria-hidden="true">
+    <h2>Hold $1. Check the device. Keep it or send it back.</h2>
+    <svg viewBox="0 0 1680 430" role="img" aria-labelledby="loop-title loop-desc">
+      <title id="loop-title">The deposit desk loop</title>
+      <desc id="loop-desc">The buyer agent holds one dollar. The desk checks the device. If the need is real the desk keeps one dollar. If the need is already handled it refunds ninety nine cents and keeps a one cent check fee.</desc>
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
+        <marker id="ah-keep" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah keep" d="M0 0 L10 5 L0 10 z"/></marker>
+        <marker id="ah-refund" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="3.4" markerHeight="3.4" orient="auto"><path class="ah refund" d="M0 0 L10 5 L0 10 z"/></marker>
+      </defs>
+
+      <rect class="node" x="0" y="120" width="280" height="190" rx="28"/>
+      <text class="t-name" x="140" y="185" text-anchor="middle">Buyer agent</text>
+      <text class="t-sub" x="140" y="235" text-anchor="middle">cannot see</text>
+      <text class="t-sub" x="140" y="273" text-anchor="middle">the device</text>
+
+      <path class="ln" d="M286 215 L592 215" marker-end="url(#ah)"/>
+      <text class="t-step" x="439" y="176" text-anchor="middle"><tspan class="f-wait">1</tspan> Hold $1.00</text>
+      <text class="t-mono" x="439" y="264" text-anchor="middle">x402 upto</text>
+      <text class="t-sub" x="439" y="306" text-anchor="middle">nothing paid yet</text>
+
+      <rect class="node desk" x="600" y="85" width="440" height="260" rx="28"/>
+      <text class="t-name" x="820" y="146" text-anchor="middle">Deposit Desk</text>
+      <text class="t-step" x="820" y="203" text-anchor="middle"><tspan class="f-wait">2</tspan> Check the device</text>
+      <text class="t-sub" x="820" y="253" text-anchor="middle">reads power or network</text>
+      <text class="t-sub" x="820" y="295" text-anchor="middle">signs the reading</text>
+
+      <path class="ln keep" d="M1046 195 C1130 195 1150 135 1241 135" marker-end="url(#ah-keep)"/>
+      <path class="ln refund" d="M1046 235 C1130 235 1150 335 1241 335" marker-end="url(#ah-refund)"/>
+
+      <text class="t-step" x="1250" y="36"><tspan class="f-wait">3</tspan> Settle</text>
+      <rect class="node keep" x="1250" y="50" width="430" height="170" rx="28"/>
+      <text class="t-big f-keep" x="1282" y="126">Keep $1.00</text>
+      <text class="t-sub" x="1282" y="180">the need is real</text>
+      <rect class="node refund" x="1250" y="250" width="430" height="170" rx="28"/>
+      <text class="t-big f-refund" x="1282" y="316">Refund $0.99</text>
+      <text class="t-sub" x="1282" y="362">need already handled,</text>
+      <text class="t-sub" x="1282" y="398">$0.01 check fee</text>
+    </svg>
+    <div class="checks">
+      <div class="check"><span class="tag">Charger</span><span class="q">Is the device on AC power?</span></div>
+      <div class="check"><span class="tag">Hotspot</span><span class="q">Is the device on the venue network?</span></div>
+    </div>
+    <p class="moto">The check changes. <span>The money does not.</span></p>
+  </section>
+
+  <section class="slide s3" id="s3" aria-label="Benchmark" aria-hidden="true">
+    <h2>A cheaper model with Deposit Desk beat the frontier model on wasted spend.</h2>
+    <p class="sub">Same 50 generated scenarios for every run. Wasted means money spent on a need that was already handled.</p>
+    <div class="bench" role="table" aria-label="Benchmark results">
+      <div class="row head" role="row">
+        <div role="columnheader"></div>
+        <div role="columnheader">Wasted spend</div>
+        <div role="columnheader">Real needs met</div>
+      </div>
+      <div class="row" role="row">
+        <div class="who" role="cell"><b>Fable 5.1 alone</b><span>claude-fable-5-1, model cost $1.1504</span></div>
+        <div class="num bad" role="cell">$16.00</div>
+        <div class="num" role="cell">93.5%<small>missed 2 of 31</small></div>
+      </div>
+      <div class="row" role="row">
+        <div class="who" role="cell"><b>Sonnet 5 alone</b><span>claude-sonnet-5, model cost $0.1095</span></div>
+        <div class="num bad" role="cell">$7.00</div>
+        <div class="num" role="cell">48.4%<small>missed 16 of 31</small></div>
+      </div>
+      <div class="row win" role="row">
+        <div class="who" role="cell"><b>Sonnet 5 + Deposit Desk</b><span>claude-sonnet-5, model cost $0.1207</span></div>
+        <div class="num" role="cell">$0.19</div>
+        <div class="num" role="cell">100%<small>missed 0 of 31</small></div>
+      </div>
+    </div>
+    <p class="note">Scenarios are generated (bench/generate.js, seeded). Device states are simulated from each scenario's hidden truth; in the live product the desk reads the real device.<span>Source: deposit-desk/bench/results.json, run 2026-09-30.</span></p>
+  </section>
+
+  <section class="slide s4" id="s4" aria-label="Why a middleman and why Solana" aria-hidden="true">
+    <h2>Every market of strangers needed a middleman.</h2>
+    <div class="mids">
+      <div class="mid"><div class="name">PayPal</div><p>Became the trust layer for eBay. eBay bought it.</p></div>
+      <div class="mid"><div class="name">Stripe</div><p>Sits between businesses and banks.</p></div>
+      <div class="mid"><div class="name">OpenRouter</div><p>Sits between apps and model providers.</p></div>
+      <div class="mid us"><div class="name">Pay.sh</div><p>Sits between agents and paid APIs.</p></div>
+    </div>
+    <p class="claim">Agents are the next strangers spending money.<br>Someone has to <span>hold the deposit</span>.</p>
+    <div class="pair">
+      <div class="card">
+        <div class="lab">Why Solana</div>
+        <p>A 1 cent check only works when a settlement costs a fraction of a cent.</p>
+        <p class="small">On card rails the fee is larger than our whole margin.</p>
+      </div>
+      <div class="card">
+        <div class="lab">Next</div>
+        <p>New checks are new catalog lines: locker, parking, battery swap. Hardware-signed readings next.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="hud">
+    <div><span>Deposit Desk</span><span class="hint">arrow keys or click, F for fullscreen</span></div>
+    <div id="count" aria-live="polite">1 / 4</div>
+    <div id="bar"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var count = document.getElementById('count');
+  var bar = document.getElementById('bar');
+  var index = 0;
+
+  function fit() {
+    var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.setProperty('--k', String(k));
+  }
+
+  function show(i, keepHash) {
+    index = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (s, n) {
+      var on = n === index;
+      s.classList.toggle('on', on);
+      s.setAttribute('aria-hidden', on ? 'false' : 'true');
+    });
+    count.textContent = (index + 1) + ' / ' + slides.length;
+    bar.style.width = ((index + 1) / slides.length * 100) + '%';
+    if (!keepHash) {
+      try { history.replaceState(null, '', '#' + (index + 1)); } catch (e) {}
+    }
+  }
+
+  function fromHash() {
+    var n = parseInt(location.hash.slice(1), 10);
+    return isNaN(n) ? 0 : n - 1;
+  }
+
+  function fullscreen() {
+    var d = document;
+    if (d.fullscreenElement) {
+      d.exitFullscreen();
+    } else if (d.documentElement.requestFullscreen) {
+      d.documentElement.requestFullscreen().catch(function () {});
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ' || k === 'Enter') {
+      e.preventDefault(); show(index + 1);
+    } else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp' || k === 'Backspace') {
+      e.preventDefault(); show(index - 1);
+    } else if (k === 'Home') {
+      e.preventDefault(); show(0);
+    } else if (k === 'End') {
+      e.preventDefault(); show(slides.length - 1);
+    } else if (k === 'f' || k === 'F') {
+      fullscreen();
+    } else if (/^[1-9]$/.test(k) && Number(k) <= slides.length) {
+      show(Number(k) - 1);
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (e.button !== 0) return;
+    show(e.clientX < window.innerWidth * 0.25 ? index - 1 : index + 1);
+  });
+
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', function () { show(fromHash(), true); });
+
+  fit();
+  show(fromHash(), true);
+})();
+</script>
+</body>
+</html>
