@@ -58,9 +58,10 @@ pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger     # expect re
 pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot     # phone hotspot: expect kept. Venue wifi: expect refunded
 ```
 
-Sandbox quirk seen twice on 2026-09-30: the first `pay --sandbox` hold after a quiet period can stall for
-about 30 seconds and then fail (`Server returned 402 again after payment`, or a `settle_failed` card
-on the dashboard). The retry settles in about 4 seconds. So run the pre-flight holds above right
+Sandbox quirk measured on 2026-09-30: about 1 in 10 to 15 sandbox paid calls fails inside pay-kit's
+channel broadcast against the sandbox RPC (the desk logs `payment rejected: invalid_upto_svm_channel_broadcast`),
+usually as a 30 second stall followed by `Server returned 402 again after payment` or a `settle_failed`
+card on the dashboard. The retry settles in about 4 seconds. So run the pre-flight holds above right
 before walking up, and if a hold on stage takes longer than 15 seconds, say "sandbox is warming up"
 and rerun the same command.
 

@@ -14,7 +14,8 @@ import { settlementFor } from './settlement.js';
 const PORT = Number(process.env.PORT ?? 8787);
 const NETWORK = process.env.NETWORK ?? 'localnet';
 const RPC_URL = process.env.RPC_URL ?? (NETWORK === 'localnet' ? 'https://402.surfnet.dev:8899' : undefined);
-const CHARGER_WAIT_MS = Number(process.env.CHARGER_WAIT_MS ?? 30_000);
+// Clamped like a request value: the wait must end inside the x402 offer's 300 second timeout.
+const CHARGER_WAIT_MS = chargerWaitMs(Number(process.env.CHARGER_WAIT_MS ?? 30_000) / 1000, 30_000);
 // Hold log location. Tests and parallel runs point this at a scratch directory.
 const DATA_DIR = process.env.DATA_DIR ?? 'data';
 const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
@@ -135,7 +136,11 @@ function safeBase64(value) {
 function toWebRequest(req) {
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
-  return new Request(`http://${req.headers.host ?? 'localhost'}${req.originalUrl}`, { method: req.method, headers });
+  // x402 v2 binds the offer to the exact absolute URL the agent requested. Behind a tunnel that
+  // URL is https on the public host, which arrive here as the forwarded headers.
+  const proto = String(req.headers['x-forwarded-proto'] ?? 'http').split(',')[0].trim() || 'http';
+  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? 'localhost').split(',')[0].trim();
+  return new Request(`${proto}://${host}${req.originalUrl}`, { method: req.method, headers });
 }
 
 const app = express();
@@ -198,9 +203,19 @@ app.post('/v1/rent/:item', async (req, res, next) => {
   }
   if ('respond' in result || result.status === 402) {
     const response = 'respond' in result ? result.respond : result.response;
+    const body = Buffer.from(await response.arrayBuffer());
+    // A 402 on a request that already carries payment is a rejected proof; log why.
+    if (req.headers['payment-signature'] || req.headers['x-payment']) {
+      let reason;
+      try {
+        const { code, detail } = JSON.parse(body.toString('utf8'));
+        reason = [code, detail].filter(Boolean).join(': ');
+      } catch {}
+      console.warn(`POST ${req.originalUrl} payment rejected: ${reason || 'no reason given'}`);
+    }
     res.status(response.status);
     response.headers.forEach((value, name) => res.setHeader(name, value));
-    return res.send(Buffer.from(await response.arrayBuffer()));
+    return res.send(body);
   }
 
   const hold = {
@@ -211,66 +226,90 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     status: 'checking',
     startedAt: Date.now(),
   };
-  publish(hold);
 
-  let reading;
+  // From here the agent's $1.00 is escrowed. Whatever happens, settle() must run once so the
+  // escrow is released now rather than at the x402 timeout (pay-kit memoizes settle()).
+  let settleStarted = false;
   try {
-    reading =
-      item === 'charger'
-        ? await checkCharger({ holdId: hold.id, waitMs: chargerWaitMs(req.body?.wait_seconds, CHARGER_WAIT_MS), onUpdate: u => publish({ ...hold, ...u }) })
-        : await checkHotspot({ holdId: hold.id });
+    publish(hold);
+
+    let reading;
+    try {
+      reading =
+        item === 'charger'
+          ? await checkCharger({ holdId: hold.id, waitMs: chargerWaitMs(req.body?.wait_seconds, CHARGER_WAIT_MS), onUpdate: u => publish({ ...hold, ...u }) })
+          : await checkHotspot({ holdId: hold.id });
+    } catch (error) {
+      reading = { holdId: hold.id, item, outcome: 'check_failed', detail: String(error?.message ?? error), ts: Date.now() };
+    }
+
+    const { keep, chargeBaseUnits } = settlementFor(reading.outcome);
+    settleStarted = true;
+    // Never setting the meter settles 0, so a desk-side check failure costs the agent nothing.
+    if (chargeBaseUnits > 0n) result.charge.charge(chargeBaseUnits);
+
+    let settlementHeaders = {};
+    let settleError;
+    try {
+      settlementHeaders = await result.settle();
+    } catch (error) {
+      settleError = String(error?.message ?? error);
+    }
+    for (const [name, value] of Object.entries(settlementHeaders)) res.setHeader(name, value);
+    const { decision, charged_usd, returned_usd } = settlementFor(reading.outcome, settleError);
+
+    const memo = `DESK ${keep ? 'KEEP' : 'REFUND'} hold:${hold.id} ${item} ${reading.detail} sig:${(reading.signature ?? '').slice(0, 8)}`;
+    const settled = {
+      ...hold,
+      status: settleError ? 'settle_failed' : decision,
+      outcome: reading.outcome,
+      detail: reading.detail,
+      charged_usd,
+      returned_usd,
+      settlementTx: extractSignature(settlementHeaders),
+      settleError,
+      reading,
+      memo: settleError ? undefined : memo,
+      settledAt: Date.now(),
+    };
+    publish(settled);
+
+    // The receipt carries the reason onchain. Best effort, never blocks the agent, and never
+    // claims KEEP or REFUND for a settlement that did not go through.
+    if (!settleError) {
+      postReceipt(memo)
+        .then(receiptTx => receiptTx && publish({ ...settled, receiptTx }))
+        .catch(error => publish({ ...settled, receiptError: String(error?.message ?? error) }));
+    }
+
+    res.json({
+      hold_id: hold.id,
+      item,
+      outcome: reading.outcome,
+      decision,
+      charged_usd,
+      returned_usd,
+      settle_error: settleError,
+      reason: settleError
+        ? 'Settlement did not go through: nothing was charged, and the hold stays in escrow until the x402 timeout releases it.'
+        : ITEMS[item].rules[reading.outcome] ?? reading.detail,
+      signed_reading: reading,
+      settlement_tx: settled.settlementTx,
+      network: NETWORK,
+    });
   } catch (error) {
-    reading = { holdId: hold.id, item, outcome: 'check_failed', detail: String(error?.message ?? error), ts: Date.now() };
+    // The desk itself failed after the hold opened. Settle now (the meter is still zero unless the
+    // failure came from settle() itself) so the agent's escrow is released, then report the error.
+    if (!settleStarted) {
+      try {
+        await result.settle();
+      } catch (settleError) {
+        console.error(`hold ${hold.id}: settle after a desk error failed:`, settleError?.message ?? settleError);
+      }
+    }
+    publish({ ...hold, status: 'settle_failed', detail: 'desk error after the hold opened', settleError: String(error?.message ?? error), settledAt: Date.now() });
+    next(error);
   }
-
-  const { keep, chargeBaseUnits } = settlementFor(reading.outcome);
-  // Never setting the meter settles 0, so a desk-side check failure costs the agent nothing.
-  if (chargeBaseUnits > 0n) result.charge.charge(chargeBaseUnits);
-
-  let settlementHeaders = {};
-  let settleError;
-  try {
-    settlementHeaders = await result.settle();
-  } catch (error) {
-    settleError = String(error?.message ?? error);
-  }
-  for (const [name, value] of Object.entries(settlementHeaders)) res.setHeader(name, value);
-  const { decision, charged_usd, returned_usd } = settlementFor(reading.outcome, settleError);
-
-  const memo = `DESK ${keep ? 'KEEP' : 'REFUND'} hold:${hold.id} ${item} ${reading.detail} sig:${(reading.signature ?? '').slice(0, 8)}`;
-  const settled = {
-    ...hold,
-    status: settleError ? 'settle_failed' : decision,
-    outcome: reading.outcome,
-    detail: reading.detail,
-    charged_usd,
-    returned_usd,
-    settlementTx: extractSignature(settlementHeaders),
-    settleError,
-    reading,
-    memo,
-    settledAt: Date.now(),
-  };
-  publish(settled);
-
-  // The receipt carries the reason onchain. Best effort, never blocks the agent.
-  postReceipt(memo)
-    .then(receiptTx => receiptTx && publish({ ...settled, receiptTx }))
-    .catch(error => publish({ ...settled, receiptError: String(error?.message ?? error) }));
-
-  res.json({
-    hold_id: hold.id,
-    item,
-    outcome: reading.outcome,
-    decision,
-    charged_usd,
-    returned_usd,
-    settle_error: settleError,
-    reason: ITEMS[item].rules[reading.outcome] ?? reading.detail,
-    signed_reading: reading,
-    settlement_tx: settled.settlementTx,
-    network: NETWORK,
-  });
 });
 
 // OpenAPI with payment offers, used by `pay gate --openapi` and the pay-skills catalog.
