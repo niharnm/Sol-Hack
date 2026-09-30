@@ -335,7 +335,7 @@ Feature freeze 15:15. Rehearse 3 times 16:00 to 17:00. Both of us run the full d
 | Mainnet pay account (buyer agent) | `uGYpMV8USCcDhyysbFeqFTNMMFX4dqczzg47xC33Woi` (Apple Keychain) |
 | Mainnet funds (buyer) | Done: 5.00 USDC confirmed with `pay whoami` |
 | Desk wallet (operator, fee payer, receipts) | `7Y4oheKe91GGFHN3sPZadu3cYkH1GKi1AJ9XRW5ZRviu`, keypair `keys/desk.json` (gitignored, mode 600). Balance 0 SOL. Not needed: sandbox only (Nihar, 2026-09-30). Devnet and sandbox faucets were rate limited / down when tried |
-| Permanent public URL | https://motto.tail039d5c.ts.net via Tailscale Funnel (machine name `motto`), proxies 127.0.0.1:8787. Verified from outside: `/healthz` and `/v1/terms` 200, paid routes 402. Off with `tailscale funnel --https=443 off` |
+| Permanent public URL | https://motto.tail039d5c.ts.net via Tailscale Funnel (machine name `motto`), proxies 127.0.0.1:8787. Verified from outside: `/healthz` and `/v1/terms` 200, paid routes 402. Kept current with `motto/scripts/desk.sh restart` (node --watch: src/ edits restart the desk, `status` shows HEAD next to the commit `/healthz` reports). Off with `tailscale funnel --https=443 off` |
 | `cloudflared` tunnel | Fallback. Installed and tested: public URL served `/v1/terms` and returned `402` on a hold |
 | Local mainnet config | `motto/.env.mainnet` (gitignored). No secrets in it; keys passed at launch |
 | Agent spending cap | `motto/pay-permissions.yml` (max $1.00 per payment) |
@@ -356,6 +356,7 @@ npm start
 OPERATOR_KEY="$(cat ../keys/desk.json)" RECEIPT_KEY="$(cat ../keys/desk.json)" node --env-file=.env.mainnet src/server.js
 # Public URL (permanent): https://motto.tail039d5c.ts.net
 tailscale funnel --bg 8787
+# Or both at once, under node --watch so the public URL follows the checkout: scripts/desk.sh restart
 # Fallback, temporary URL
 cloudflared tunnel --url http://127.0.0.1:8787
 # Trigger a hold by hand

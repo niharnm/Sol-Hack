@@ -3,6 +3,7 @@
 // Built on Pay.sh's x402 `upto` scheme: authorize a ceiling, settle actual usage,
 // the rest goes back to the agent.
 import express from 'express';
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -135,8 +136,20 @@ app.get('/v1/terms', (_req, res) => {
   });
 });
 
+// Which repo revision this desk runs, so the public URL can be checked against `git log`.
+// "-dirty" means src/ or public/ differ from that commit; null when git is unavailable.
+function gitRevision() {
+  const git = args => execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  try {
+    const sha = git(['rev-parse', '--short', 'HEAD']);
+    return git(['status', '--porcelain', '--', 'src', 'public']) ? `${sha}-dirty` : sha;
+  } catch {
+    return null;
+  }
+}
+
 app.get('/healthz', (_req, res) => {
-  res.json({ ok: true, network: NETWORK, uptime_s: Math.round(process.uptime()), holds: holds.length });
+  res.json({ ok: true, network: NETWORK, commit: gitRevision(), uptime_s: Math.round(process.uptime()), holds: holds.length });
 });
 
 app.get('/v1/holds', (_req, res) => res.json({ holds }));

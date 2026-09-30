@@ -85,6 +85,8 @@ Also:
 ```bash
 npm test                                          # tests for the checks and the HTTP API
 npm run bench                                     # rerun the benchmark, rewrites bench/results.json
+scripts/desk.sh restart                           # the desk behind the Funnel, under node --watch: src/ edits restart it, the public URL serves this checkout
+scripts/desk.sh status                            # repo HEAD next to the commit the local and public /healthz report
 tailscale funnel --bg 8787                        # permanent public URL: https://motto.tail039d5c.ts.net
 cloudflared tunnel --url http://127.0.0.1:8787    # fallback: temporary URL (or: npm run tunnel)
 ```

@@ -132,7 +132,7 @@ test('GET /openapi.json advertises the payment offers', async () => {
   }
 });
 
-test('GET /healthz reports network, uptime and hold count', async () => {
+test('GET /healthz reports network, commit, uptime and hold count', async () => {
   const res = await fetch(`${desk.base}/healthz`);
   assert.equal(res.status, 200);
   const body = await res.json();
@@ -140,6 +140,7 @@ test('GET /healthz reports network, uptime and hold count', async () => {
   assert.equal(body.network, 'localnet');
   assert.ok(Number.isInteger(body.uptime_s) && body.uptime_s >= 0);
   assert.equal(body.holds, 3);
+  assert.ok(body.commit === null || /^[0-9a-f]{7,40}(-dirty)?$/.test(body.commit), `commit: ${body.commit}`);
 });
 
 test('GET /v1/holds reloads the log: last line per id, newest first, bad lines skipped', async () => {
