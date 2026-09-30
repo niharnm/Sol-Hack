@@ -248,7 +248,7 @@ async function boot() {
   let pairingError;
   try{await pairFromFragment();}catch(error){pairingError=error.message;}
   const session=await fetch('/v1/admin/session').catch(()=>undefined);
-  if(session?.ok){setAdminState(true);connectEvents();await sync(true);return;}
+  if(session?.ok){setAdminState(true);if($('pairing-dialog').open)$('pairing-dialog').close();connectEvents();await sync(true);return;}
   setAdminState(false,pairingError?`Pairing failed: ${pairingError}`:'Purchase records are private. On the machine running Motto, create a five-minute pairing link:');
   await sync(false);$('pairing-dialog').showModal();connection(false);
 }
@@ -261,6 +261,7 @@ $('fullscreen').onclick=()=>{const promise=document.fullscreenElement?document.e
 $('admin-session').onclick=()=>$('pairing-dialog').showModal();
 $('logout-admin').onclick=async()=>{await fetch('/v1/admin/logout',{method:'POST'});events?.close();setAdminState(false,'This browser is no longer paired. Create a new five-minute pairing link on the machine running Motto.');$('pairing-dialog').showModal();};
 render();boot();
+addEventListener('hashchange',()=>{if(new URLSearchParams(location.hash.slice(1)).has('pair'))boot();});
 setInterval(()=>{if(!document.hidden)renderProgressContext();},1000);
 
 $('download-receipt').onclick=()=>{
