@@ -8,7 +8,7 @@
 <link rel="preload" href="/fonts/instrument-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/console.css"><script src="/console.js" defer></script>
 </head>
-<body>
+<body data-stream="offline">
 <a class="skip-link" href="#main">Skip to workspace</a>
 <aside class="sidebar">
 <a class="brand" href="/" aria-label="Motto home"><span class="brand-mark">m</span>motto<span class="beta">BETA</span></a>
@@ -33,7 +33,7 @@
 <section class="purchase-section" aria-labelledby="run-title">
 <div class="section-heading"><div><span class="eyebrow">PURCHASE OVERVIEW <span id="run-id">NO PURCHASE SELECTED</span></span><h2 id="run-title">Your next purchase starts here.</h2></div><span class="status-pill" id="run-status">READY</span></div>
 <div class="purchase-grid"><div class="purchase-main">
-<section class="panel journey" aria-label="Purchase progress"><div class="panel-heading"><h3>From request to receipt</h3><span id="progress-count" class="subtle">Ready</span></div><p id="process-label" class="process-label">Every step, accounted for.</p><ol class="steps"><li class="step" data-step="0"><i>1</i><div><b>Intent and budget</b><small>Buyer · authorization</small></div></li><li class="step" data-step="1"><i>2</i><div><b>Provider result</b><small>Supported virtual service</small></div></li><li class="step" data-step="2"><i>3</i><div><b>Result validated</b><small>Motto · acceptance rules</small></div></li><li class="step" data-step="3"><i>4</i><div><b>Payment and receipt</b><small>Pay.sh · settlement</small></div></li></ol></section>
+<section class="panel journey" aria-label="Purchase progress"><div class="panel-heading"><h3>From request to receipt</h3><span id="progress-count" class="subtle">Ready</span></div><p id="process-label" class="process-label">Every step, accounted for.</p><div class="progress-context"><p id="progress-detail" role="status">Choose a service to begin.</p><span id="progress-age" aria-hidden="true"></span></div><ol class="steps"><li class="step" data-step="0"><i>1</i><div><b>Intent and budget</b><small>Buyer · authorization</small></div></li><li class="step" data-step="1"><i>2</i><div><b>Provider result</b><small>Supported virtual service</small></div></li><li class="step" data-step="2"><i>3</i><div><b>Result validated</b><small>Motto · acceptance rules</small></div></li><li class="step" data-step="3"><i>4</i><div><b>Payment and receipt</b><small>Pay.sh · settlement</small></div></li></ol></section>
 <section class="panel delivery" id="delivery-panel"><div class="panel-heading"><h3>Outcome & evidence</h3><span id="delivery-count" class="subtle">AWAITING PURCHASE</span></div><div class="purchase-request"><span class="eyebrow" id="purchase-kind">YOUR PURCHASE</span><h3 id="purchase-query">A clear outcome. A visible money trail.</h3><p id="purchase-contract">Select a purchase to see what was checked and why funds moved.</p></div><div id="citations" class="citations"></div></section>
 <details class="panel activity-panel"><summary>Purchase activity <span>View timeline ↗</span></summary><div id="events" class="event-log" aria-live="polite"></div></details>
 </div><aside class="money-column">

@@ -8,8 +8,10 @@ let deliveryKey = '', previousSelection, submitting = false;
 const statusNames = {checking:'Funds authorized',fetching:'Provider in progress',validating:'Validating result',settling:'Settling payment',kept:'Delivered',refunded:'Funds returned',settle_failed:'Payment unconfirmed',interrupted:'Interrupted'};
 const serviceNames = {research:'Research source pack'};
 const serviceName = item => serviceNames[item] ?? human(item);
-let reviewedRequest;
-function animate(el) { el.classList.remove('appear'); void el.offsetWidth; el.classList.add('appear'); }
+let reviewedRequest, privateRecords=false;
+let motionRecord, eventRenderKey = "", eventRecordId;
+const stateSeenAt = new Map();
+function animate(el, name='appear') { el.classList.remove(name); void el.offsetWidth; el.classList.add(name); }
 function renderProgress(h) {
   const state=h?.status, attention=['settle_failed','interrupted'].includes(state);
   const step=!h?-1:state==='checking'?0:state==='fetching'?1:state==='validating'?2:3;
@@ -19,12 +21,64 @@ function renderProgress(h) {
     // Payment completion does not turn an unsuccessful evidence check into a success.
     const failed=(n===2&&evidenceFailed)||(n===step&&attention);
     const complete=!failed&&(n<step || (n===step&&settled(h)))&&(state!=='interrupted'||n===0);
+    const samePurchase=motionRecord?.id===h?.id;
+    if(!samePurchase)el.classList.remove('step-arrived','step-alert');
+    if(samePurchase&&complete&&!el.classList.contains('done'))animate(el,'step-arrived');
+    if(samePurchase&&failed&&!el.classList.contains('failed'))animate(el,'step-alert');
     el.classList.toggle('done',complete);el.classList.toggle('active',n===step&&!complete&&!failed);el.classList.toggle('failed',failed);
     if(n===step&&pending(h))el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');
   });
   text('process-label',statusNames[state]??(h?human(state):'Ready for a request'));
   text('progress-count',!h?'Awaiting purchase':settled(h)?'Payment complete':attention?'Needs attention':'In progress');
   $('delivery-panel').classList.toggle('loading',Boolean(pending(h)));
+  $('delivery-panel').setAttribute('aria-busy',String(Boolean(pending(h))));
+  renderProgressContext();
+}
+
+// Status explanations and elapsed time report observations, never estimated completion.
+function renderProgressContext(){
+  const h=current();
+  if(privateRecords){text('progress-detail','Purchase activity is private. Open the workspace on the hosting laptop to follow live steps.');text('progress-age','');return;}
+  const explanations={
+    checking:'Payment authorization received. Waiting for the service check.',
+    fetching:'The provider is preparing your result. Evidence has not arrived yet.',
+    validating:'Motto is checking the result against the acceptance rules.',
+    settling:'The check has finished. Waiting for the payment result from Pay.sh.',
+    kept:'Settlement reported. Inspect the outcome and receipt for what was verified.',
+    refunded:'Return of funds reported. The money card shows the final split.',
+    settle_failed:'Payment is unconfirmed. Inspect this receipt before trying again.',
+    interrupted:'This purchase was interrupted. Inspect the receipt before trying again.'
+  };
+  const disconnected=h&&pending(h)&&!live;
+  text('progress-detail',disconnected?'Live updates disconnected. Showing the last known state; reconnecting…':explanations[h?.status]??'Choose a service to begin. Each step updates when the desk reports it.');
+  const latest=h?.steps?.at(-1), since=latest&&latest.status===h?.status?latest.at:stateSeenAt.get(h?.id);
+  const seconds=Math.max(0,Math.floor((Date.now()-Number(since))/1000));
+  text('progress-age',pending(h)&&Number.isFinite(seconds)?`${seconds}s since ${latest?'step changed':'status received'}`:'');
+}
+function renderMotion(h){
+  const same=motionRecord?.id===h?.id;
+  if(!same){
+    $('run-status').classList.remove('status-arrived');
+    document.querySelector('.money-card').classList.remove('money-arrived');
+    document.querySelector('.receipt-card').classList.remove('receipt-arrived');
+    document.querySelector('.journey').classList.remove('attention-arrived');
+    for(const id of ['charged','returned'])$(id).classList.remove('amount-arrived');
+  }
+  if(same&&h){
+    if(motionRecord.status!==h.status){
+      animate($('run-status'),'status-arrived');
+      animate($('process-label'),'appear');
+      if(['settle_failed','interrupted'].includes(h.status))animate(document.querySelector('.journey'),'attention-arrived');
+    }
+    const split=JSON.stringify([h.charged_usd,h.returned_usd]);
+    if(settled(h)&&split!==motionRecord.split){
+      // Keep exact amounts visible throughout the highlight; do not count invented money.
+      animate(document.querySelector('.money-card'),'money-arrived');
+      for(const id of ['charged','returned'])animate($(id),'amount-arrived');
+    }
+    if(h.reading&&!motionRecord.evidence)animate(document.querySelector('.receipt-card'),'receipt-arrived');
+  }
+  motionRecord=h?{id:h.id,status:h.status,split:JSON.stringify([h.charged_usd,h.returned_usd]),evidence:Boolean(h.reading)}:undefined;
 }
 const pending = h => h && ['checking','fetching','validating','settling'].includes(h.status);
 const settled = h => h && ['kept','refunded'].includes(h.status);
@@ -33,8 +87,8 @@ const human = s => String(s ?? '').replaceAll('_',' ');
 const usd = v => v == null ? '—' : '$' + Number(v).toFixed(2);
 const short = s => s ? String(s).slice(0,8) + '…' + String(s).slice(-6) : '—';
 const time = t => t ? new Date(t).toLocaleTimeString([], {hour12:false}) : '—';
-const get = async path => { const r = await fetch(path); if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); };
-function text(id, value) { $(id).textContent = value; }
+const get = async path => { const r = await fetch(path); if (!r.ok) throw Object.assign(new Error(`${path}: ${r.status}`),{status:r.status}); return r.json(); };
+function text(id, value) { const el=$(id);if(el.textContent!==String(value))el.textContent=value; }
 function current() { return holds.get(selectedId); }
 function addEvent(h, source) {
   eventLog.unshift({id:h.id,status:h.status,at:Date.now(),source,detail:h.detail || h.reading?.reason || h.item});
@@ -45,9 +99,9 @@ function ingest(h, source) {
   const previous = holds.get(h.id);
   if (previous && rank(h) < rank(previous)) return;
   holds.set(h.id, {...previous,...h});
-  if (!previous || previous.status !== h.status) addEvent(h,source);
+  if (!previous || previous.status !== h.status) {addEvent(h,source);stateSeenAt.set(h.id,Date.now());}
   const sorted = [...holds.values()].sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
-  for (const old of sorted.slice(500)) holds.delete(old.id);
+  for (const old of sorted.slice(500)) {holds.delete(old.id);stateSeenAt.delete(old.id);}
   if (followNewest || !holds.has(selectedId)) { const next=visible()[0]?.id; selectedId=next; }
 }
 function node(name,state) { const el=document.querySelector(`[data-node="${name}"]`); el.classList.remove('observed','working','error'); if (state) el.classList.add(state); }
@@ -57,20 +111,25 @@ function renderRuns() {
   const frag=document.createDocumentFragment();
   for (const h of list) {
     const b=document.createElement('button'); b.className='run'+(selectedId===h.id?' selected':'')+(['settle_failed','interrupted'].includes(h.status)?' failed':'');
+    b.classList.toggle('running',Boolean(pending(h)));
     b.setAttribute('aria-pressed',String(selectedId===h.id));
     const title=document.createElement('div'); title.className='run-title'; title.textContent=h.item==='research'?(h.query??h.reading?.query??serviceName(h.item)):serviceName(h.item); title.append(document.createElement('i'));
     const meta=document.createElement('div'); meta.className='run-meta'; const id=document.createElement('span'),status=document.createElement('span');id.textContent=h.id;status.textContent=statusNames[h.status]??human(h.status);meta.append(id,status);b.append(title,meta);
     b.onclick=()=>{selectedId=h.id;followNewest=h.id===list[0]?.id;render();};frag.append(b);
   }
   $('runs').replaceChildren(frag);
-  if(!list.length) {const p=document.createElement('p');p.className='muted pad';p.textContent='Your purchases will appear here.';$('runs').append(p);}
+  if(!list.length) {const p=document.createElement('p');p.className='muted pad';p.textContent=privateRecords?'Purchase history is private on this connection.':'Your purchases will appear here.';$('runs').append(p);}
 }
 function renderEvents() {
   const h=current();
   const entries=h?.steps?.length ? [...h.steps].reverse().map(step=>({...step,source:'recorded',detail:''})) : eventLog.filter(e=>e.id===selectedId);
+  const key=JSON.stringify([h?.id,entries.slice(0,30)]);
+  if(key===eventRenderKey)return;
+  const newEvent=eventRecordId===h?.id&&Boolean(eventRenderKey);
+  eventRenderKey=key;eventRecordId=h?.id;
   const frag=document.createDocumentFragment();
   for (const e of entries.slice(0,30)) {
-    const row=document.createElement('div');row.className='event';const ts=document.createElement('time');ts.textContent=time(e.at);
+    const row=document.createElement('div');row.className='event'+(newEvent&&!frag.childNodes.length?' event-arrived':'');const ts=document.createElement('time');ts.textContent=time(e.at);
     const content=document.createElement('div'),title=document.createElement('b'),desc=document.createElement('small');title.textContent=statusNames[e.status]??human(e.status);desc.textContent=e.detail?human(e.detail):'Receipt '+selectedId;content.append(title,desc);row.append(ts,content);frag.append(row);
   }
   $('events').replaceChildren(frag);
@@ -95,8 +154,9 @@ function inspect() {
     receipt:['Signed receipt','Inspect the exact deliverable and evidence returned by Motto and verify its Ed25519 signature locally.',[['Hold',h?.id],['Service',h?.item],['Outcome',h?.outcome],['Check fee',h?.check_fee_usd],['Reason',r?.reason??h?.detail]]]
   }[inspected];
   text('inspector-title',data[0]);text('inspector-desc',data[1]);fields(data[2]);
-  const signed=Boolean(r?.signature && r?.devicePublicKey);
-  $('verify').disabled=!signed;
+  const signed=Boolean(r?.signature && r?.devicePublicKey), verifying=verification.get(h?.id)==='Verifying…';
+  $('verify').disabled=!signed||verifying;
+  $('verify').setAttribute('aria-busy',String(verifying));
   $('download-receipt').disabled=!h?.reading;
   $('signature-state').classList.toggle('verified',verification.get(h?.id)?.startsWith('Verified')??false);
   text('signature-state',verification.get(h?.id)??(signed?'Signature present · not yet verified':'No signed delivery available.'));
@@ -119,7 +179,7 @@ function renderDelivery(h) {
   if(nextKey===deliveryKey)return;deliveryKey=nextKey;
   const frag=document.createDocumentFragment();
   for(const c of pack?.citations??[]) {
-    const card=document.createElement('article');card.className='citation appear';
+    const card=document.createElement('article');card.className='citation appear';card.style.setProperty('--arrival-delay',`${Math.min(frag.childNodes.length,5)*80}ms`);
     const label=document.createElement('span');label.className='eyebrow';label.textContent=c.publisher??'CROSSREF RECORD';
     const a=document.createElement('a');a.textContent=c.title;
     try {const u=new URL(c.url);if(u.protocol==='https:'&&u.hostname==='doi.org'){a.href=u.href;a.target='_blank';a.rel='noopener';}}catch{}
@@ -150,7 +210,7 @@ function render() {
   text('receipt-label',h?.reading?.signature?'Ed25519 signature present':'Awaiting signature');
   text('ceiling',usd(h?.hold_usd));text('charged',settled(h)?usd(h.charged_usd):'—');text('returned',settled(h)?usd(h.returned_usd):'—');
   text('money-status',!h?'No funds authorized':settled(h)?'Settlement reported by Pay.sh':h.status==='settle_failed'?'Settlement unconfirmed · inspect receipt':h.status==='interrupted'?'Purchase interrupted · inspect receipt':'Authorization recorded · settlement pending');
-  text('ledger-note',settled(h)?(h.reading?.reason??h.detail??'Settlement reported. Inspect your receipt for the evidence and payment details.'):h?'The ceiling is not a final charge. Settled and returned amounts appear when confirmed by the desk.':'Authorize a maximum. Motto checks the evidence and settles according to the service terms.');inspect();
+  text('ledger-note',settled(h)?(h.reading?.reason??h.detail??'Settlement reported. Inspect your receipt for the evidence and payment details.'):h?'The ceiling is not a final charge. Settled and returned amounts appear when confirmed by the desk.':'Authorize a maximum. Motto checks the evidence and settles according to the service terms.');inspect();renderMotion(h);
 }
 async function verifyReading() {
   const h=current();if(!h?.reading?.signature)return;
@@ -166,7 +226,7 @@ async function verifyReading() {
   } catch(e) {verification.set(id,'Not verified: '+e.message+'. Use node demo/verify-proof.mjs if Ed25519 is unsupported.');}
   if(selectedId===id)inspect();
 }
-function connection(ok) {live=ok;text('connection',ok?'● stream live':'● reconnecting');$('connection').classList.toggle('online',ok);text('footer-status',ok?'Live desk event stream':'Disconnected · showing last received records');}
+function connection(ok) {if(privateRecords){live=false;document.body.dataset.stream='offline';text('connection','● private activity');$('connection').classList.remove('online');text('footer-status','Live activity is available on the hosting laptop');renderProgressContext();return;}live=ok;document.body.dataset.stream=ok?'live':'offline';renderProgressContext();text('connection',ok?'● stream live':'● reconnecting');$('connection').classList.toggle('online',ok);text('footer-status',ok?'Live desk event stream':'Disconnected · showing last received records');}
 async function sync() {
   const results=await Promise.allSettled([get('/v1/terms'),get('/v1/holds')]);
   if(results[0].status==='fulfilled'){
@@ -175,20 +235,22 @@ async function sync() {
 
   }
   if(results[1].status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
+  if(results[1].status==='rejected'&&[401,403].includes(results[1].reason.status)){privateRecords=true;events.close();connection(false);}
   ready=true;for(const h of queue.splice(0))ingest(h,'live');render();
-  if(results.some(r=>r.status==='rejected')){text('request-feedback','Some desk data could not be loaded. Reconnecting automatically…');setTimeout(sync,5000);}
+  if(results.some(r=>r.status==='rejected'&&![401,403].includes(r.reason.status))){text('request-feedback','Some desk data could not be loaded. Reconnecting automatically…');setTimeout(sync,5000);}
 }
 document.querySelectorAll('[data-node]').forEach(n=>n.onclick=()=>{inspected=n.dataset.node;inspect();});
 
 $('request-service').onchange=updateComposer;
 $('open-receipt').onclick=()=>{inspected='receipt';inspect();$('receipt-dialog').showModal();};
-$('verify').onclick=verifyReading;$('launch').onclick=()=>{$('request-service').focus();$('request-form').scrollIntoView({block:'center',behavior:'smooth'});};$('raw').onclick=()=>$('raw-dialog').showModal();
+$('verify').onclick=verifyReading;$('launch').onclick=()=>{$('request-service').focus();$('request-form').scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});};$('raw').onclick=()=>$('raw-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 $('copy-agent').onclick=async()=>{try{await navigator.clipboard.writeText($('purchase-command').textContent);text('copy-agent','Copied');}catch{text('copy-agent','Select and copy the command above');}};
 $('fullscreen').onclick=()=>{const promise=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();promise?.catch(()=>{});};
 const events=new EventSource('/v1/events');let opened=false;
 events.onopen=()=>{connection(true);if(opened)sync();opened=true;};events.onerror=()=>connection(false);events.onmessage=e=>{try{const h=JSON.parse(e.data);if(!ready)queue.push(h);else{ingest(h,'live');render();}}catch{}};
 render();sync();
+setInterval(()=>{if(!document.hidden)renderProgressContext();},1000);
 
 const shellQuote = value => "'"+String(value).replaceAll("'", "'\\''")+"'";
 function populateServices(){
@@ -232,7 +294,7 @@ $('request-form').onsubmit=event=>{
 };
 $('confirm-purchase').onclick=async()=>{
   if(submitting||reviewedRequest?.item!=='research'||!terms?.console_purchase)return;
-  const request=reviewedRequest;submitting=true;followNewest=true;$('request-submit').disabled=true;$('confirm-purchase').disabled=true;$('launch-dialog').close();
+  const request=reviewedRequest;submitting=true;followNewest=true;$('request-submit').setAttribute('aria-busy','true');$('request-submit').disabled=true;$('confirm-purchase').disabled=true;$('launch-dialog').close();
   text('request-submit','Working…');text('request-feedback','Authorizing test USDC. Follow the live purchase below.');
   try{
     const response=await fetch('/v1/console/purchase',{method:'POST',headers:{'Content-Type':'application/json','X-Motto-Console':'1'},body:JSON.stringify(request.body)});
@@ -240,7 +302,7 @@ $('confirm-purchase').onclick=async()=>{
     const hold=await get('/v1/holds/'+encodeURIComponent(result.hold_id));ingest(hold,'live');selectedId=hold.id;render();
     text('request-feedback',settled(hold)?'Purchase settled. Review the outcome and your receipt below.':'Payment needs attention. Inspect the receipt before trying again.');
   }catch(error){text('request-feedback',error.message+' Inspect existing purchases before retrying.');}
-  finally{submitting=false;$('request-submit').disabled=false;$('confirm-purchase').disabled=false;text('request-submit','Review purchase ↗');}
+  finally{submitting=false;$('request-submit').setAttribute('aria-busy','false');$('request-submit').disabled=false;$('confirm-purchase').disabled=false;text('request-submit','Review purchase ↗');}
 };
 
 $('download-receipt').onclick=()=>{

@@ -15,3 +15,45 @@ dialog{border:1px solid var(--line);border-radius:18px;background:white;color:va
 
 /* Put the financial result immediately after the purchase heading on phones. */
 @media(max-width:600px){.purchase-grid{display:flex;flex-direction:column}.purchase-main{width:100%}.money-column{display:contents}.money-card{order:-1;width:100%}.receipt-card{width:100%}.money-total{font-size:38px}.ledger{margin-top:16px}}
+
+/* Motion follows observed purchase state. No simulated progress or money counters. */
+.progress-context{margin-top:14px;padding:11px 13px;border:1px solid var(--line);border-radius:8px;background:#f9fafb;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+#progress-detail{font-size:11px;color:var(--muted);line-height:1.65}
+#progress-age{font-size:9px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums;padding-top:3px}
+#progress-age:empty{display:none}
+.step i{position:relative;transition:background .25s,border-color .25s,color .25s}
+.step.active i:before{content:'';position:absolute;inset:-5px;border:1px solid var(--orange);border-radius:50%;animation:working-ring 1.8s ease-out infinite;pointer-events:none}
+.step.failed i{font-size:0}
+.step.failed i:after{content:'!';font-size:12px;font-weight:700}
+.step-arrived i{animation:step-pop .45s ease-out}
+.step-alert i{animation:attention-flash .7s ease-out}
+.run.running .run-title i{background:var(--orange);animation:working-dot 1.8s ease-in-out infinite}
+.status-pill[data-state=pending]:before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:middle;animation:working-dot 1.8s ease-in-out infinite}
+.status-arrived{animation:status-arrival .35s ease-out}
+.delivery{position:relative;overflow:hidden}
+.delivery.loading:before{content:'';position:absolute;top:0;left:0;height:2px;width:28%;background:linear-gradient(90deg,transparent,var(--orange),transparent);animation:working-sweep 2.2s ease-in-out infinite}
+.citation.appear{animation:appear .35s ease-out backwards;animation-delay:var(--arrival-delay,0ms)}
+.event-arrived{animation:event-arrival .5s ease-out}
+.money-arrived{animation:money-highlight 1.1s ease-out}
+.amount-arrived{display:inline-block;animation:amount-arrival .45s ease-out}
+.receipt-arrived .receipt-icon{animation:receipt-arrival .65s ease-out}
+.attention-arrived{animation:attention-flash .85s ease-out}
+button[aria-busy=true]:before{content:'';width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;animation:busy-spin .8s linear infinite;margin-right:5px}
+dialog[open]{animation:dialog-arrival .2s ease-out}
+dialog[open]::backdrop{animation:backdrop-arrival .2s ease-out}
+body[data-stream=offline] .step.active i:before,body[data-stream=offline] .run.running .run-title i,body[data-stream=offline] .status-pill:before,body[data-stream=offline] .delivery.loading:before{animation-play-state:paused;opacity:.3}
+@keyframes working-ring{0%{transform:scale(.9);opacity:.65}100%{transform:scale(1.3);opacity:0}}
+@keyframes working-dot{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes working-sweep{0%{transform:translateX(-100%)}100%{transform:translateX(460%)}}
+@keyframes step-pop{0%{transform:scale(.8)}55%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes status-arrival{from{transform:translateY(3px);opacity:.4}to{transform:translateY(0);opacity:1}}
+@keyframes event-arrival{from{background:#fff1e9;transform:translateY(5px);opacity:.4}to{background:transparent;transform:translateY(0);opacity:1}}
+@keyframes money-highlight{0%,25%{border-color:#78af95;box-shadow:0 0 0 4px #28775c12}100%{border-color:#dce1e8;box-shadow:0 5px 16px #222b3b04}}
+@keyframes amount-arrival{from{transform:translateY(4px);opacity:.45}to{transform:translateY(0);opacity:1}}
+@keyframes receipt-arrival{0%{transform:translateY(-5px) rotate(-8deg);opacity:.3}60%{transform:translateY(2px) rotate(3deg)}100%{transform:translateY(0) rotate(-8deg);opacity:1}}
+@keyframes attention-flash{0%,30%{box-shadow:0 0 0 3px #b538381c}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes busy-spin{to{transform:rotate(360deg)}}
+@keyframes dialog-arrival{from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes backdrop-arrival{from{opacity:0}to{opacity:1}}
+@media(max-width:600px){.progress-context{flex-direction:column;gap:4px}}
+@media(prefers-reduced-motion:reduce){.step.active i:before{opacity:.45}.delivery.loading:before{width:100%;background:var(--orange);opacity:.35}}
