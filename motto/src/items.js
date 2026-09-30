@@ -1,3 +1,4 @@
+import { checkResearch, researchRequestError } from './research.js';
 // What the desk rents. Each item is one check plus its terms; the payment side is
 // the same for all of them ($1.00 hold, $0.01 check fee). A new item is a new entry here.
 import { verifyRequestError, checkCondition } from './judge.js';
@@ -8,6 +9,19 @@ const DEFAULT_WAIT_MS = chargerWaitMs(Number(process.env.CHARGER_WAIT_MS ?? 30_0
 const FAILED = 'The check itself failed: nothing charged, $1.00 returned.';
 
 export const ITEMS = {
+  research: {
+    hold_usd: '1.00', check_fee_usd: '0.00',
+    check: 'Deliver three distinct citation records with titles and DOI identifiers for the requested topic.',
+    params: { query: 'Required topic, 3 to 200 characters. Returns 3 citation records from Crossref public metadata.' },
+    summary: 'Buy a verified three-source research pack',
+    rules: {
+      delivered: 'Three citation records delivered and structural checks passed: $1.00 charged.',
+      inconclusive: 'Incomplete result or provider unavailable: nothing charged, $1.00 returned.',
+      check_failed: 'Research check failed: nothing charged, $1.00 returned.',
+    },
+    validate: researchRequestError,
+    run: ({holdId, body, onUpdate}) => checkResearch({holdId, query:body.query, onUpdate}),
+  },
   charger: {
     hold_usd: '1.00',
     check_fee_usd: '0.01',

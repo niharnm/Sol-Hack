@@ -199,6 +199,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
     id: randomUUID().slice(0, 8),
     item,
     network: NETWORK,
+    ...(item === 'research' ? { query: req.body.query.trim(), provider: 'Crossref' } : {}),
     payer: result.payment.payer,
     hold_usd: ITEMS[item].hold_usd,
     status: 'checking',
