@@ -206,3 +206,19 @@ and Payment Channels for per minute metering.
 Pay.sh (`@solana/pay-kit` x402 upto), Solana, USDC, `@solana/kit`, Express, Claude.
 
 Team: Nihar (product), Nithin (design, polish, demo).
+
+### Typed research purchases in the local console
+
+Open `http://127.0.0.1:8787`, enter a topic, and select **Find 3 sources**.
+On localnet, the local console invokes the Pay.sh CLI against the existing paid
+research endpoint. It fetches live Crossref metadata, checks three distinct DOI
+identifiers and nonempty titles, signs the delivery, and attempts settlement.
+The browser shows actual server transitions, verifies the signature locally,
+and lets you download the complete receipt. No recorded playback is used.
+
+The one-click buyer is restricted to loopback requests and test payments, with
+one purchase at a time. Public/remote visitors get a paid API command instead;
+they cannot spend the host wallet. Groq is not configured or used in this flow.
+A citation pack is metadata, not a synthesized report or a quality guarantee.
+If settlement is unconfirmed, inspect the existing purchase before retrying;
+source delivery alone does not prove payment succeeded.

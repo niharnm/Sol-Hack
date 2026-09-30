@@ -6,38 +6,21 @@ const digital = h => ['research','verify'].includes(h.item);
 const visible = () => [...holds.values()].filter(h=>includeDevice || digital(h)).sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
 let terms, selectedId, inspected = 'receipt', live = false, ready = false, followNewest = true;
 const queue = [], verification = new Map();
-let replay = null, replayTimer, deliveryKey = '', previousSelection;
-const statusNames = {checking:'Payment authorized',fetching:'Finding sources',validating:'Checking result',kept:'Delivered',refunded:'Refunded',settle_failed:'Payment failed',interrupted:'Interrupted'};
+let deliveryKey = '', previousSelection, submitting = false;
+const statusNames = {checking:'Payment authorized',fetching:'Finding sources',validating:'Checking result',settling:'Issuing payment & receipt',kept:'Delivered',refunded:'Refunded',settle_failed:'Payment unconfirmed',interrupted:'Interrupted'};
 function animate(el) { el.classList.remove('appear'); void el.offsetWidth; el.classList.add('appear'); }
-function stopReplay() { clearTimeout(replayTimer); replay=null; }
-function displayHold() {
-  const h=holds.get(selectedId);
-  if(!replay || replay.id!==h?.id)return h;
-  const state=h.steps[replay.index]?.status;
-  if(!state || replay.index===h.steps.length-1)return h;
-  return {...h,status:state,reading:undefined,outcome:undefined,detail:undefined,charged_usd:null,returned_usd:null,settlementTx:undefined};
-}
 function renderProgress(h) {
   const state=h?.status;
-  const step=!h?-1:state==='checking'?0:state==='fetching'?1:pending(h)?2:3;
+  const step=!h?-1:state==='checking'?0:state==='fetching'?1:state==='settling'?3:pending(h)?2:3;
   document.querySelectorAll('[data-step]').forEach(el=>{
     const n=Number(el.dataset.step),complete=n<step || (n===step&&settled(h));
     el.classList.toggle('done',complete);el.classList.toggle('active',n===step&&!complete);el.classList.toggle('failed',n===step&&['settle_failed','interrupted'].includes(state));
   });
-  text('process-label',replay?`RECORDED REPLAY · ${statusNames[state]??human(state)} · ${time(holds.get(selectedId).steps[replay.index]?.at)}`:statusNames[state]??(h?human(state):'Ready for a request'));
-  const recorded=holds.get(selectedId);
-  $('replay').disabled=!recorded?.steps?.length || pending(recorded);
-  text('replay',replay?'Stop replay ■':'Replay recorded steps ↻');
+  text('process-label',statusNames[state]??(h?human(state):'Ready for a request'));
+  text('progress-count',`${!h?0:settled(h)?4:Math.max(0,step)} / 4 complete`);
   $('delivery-panel').classList.toggle('loading',Boolean(pending(h)));
 }
-function startReplay() {
-  if(replay){stopReplay();render();return;}
-  const h=holds.get(selectedId);if(!h?.steps?.length||pending(h))return;
-  replay={id:h.id,index:0};deliveryKey='';
-  function advance(){render();if(replay && replay.index<h.steps.length-1)replayTimer=setTimeout(()=>{replay.index++;advance();},1400);}
-  advance();
-}
-const pending = h => h && ['checking','waiting_for_power','waiting_for_display','judging','fetching','validating'].includes(h.status);
+const pending = h => h && ['checking','waiting_for_power','waiting_for_display','judging','fetching','validating','settling'].includes(h.status);
 const settled = h => h && ['kept','refunded'].includes(h.status);
 const rank = h => h?.status === 'checking' ? 0 : pending(h) ? 1 : 2;
 const human = s => String(s ?? '').replaceAll('_',' ');
@@ -46,7 +29,7 @@ const short = s => s ? String(s).slice(0,8) + '…' + String(s).slice(-6) : '—
 const time = t => t ? new Date(t).toLocaleTimeString([], {hour12:false}) : '—';
 const get = async path => { const r = await fetch(path); if (!r.ok) throw new Error(`${path}: ${r.status}`); return r.json(); };
 function text(id, value) { $(id).textContent = value; }
-function current() { return displayHold(); }
+function current() { return holds.get(selectedId); }
 function addEvent(h, source) {
   eventLog.unshift({id:h.id,status:h.status,at:Date.now(),source,detail:h.detail || h.reading?.reason || h.item});
   if (eventLog.length > 200) eventLog.pop();
@@ -59,7 +42,7 @@ function ingest(h, source) {
   if (!previous || previous.status !== h.status) addEvent(h,source);
   const sorted = [...holds.values()].sort((a,b)=>(b.startedAt??0)-(a.startedAt??0));
   for (const old of sorted.slice(500)) holds.delete(old.id);
-  if (followNewest || !holds.has(selectedId)) { const next=visible()[0]?.id; if(next!==selectedId)stopReplay(); selectedId=next; }
+  if (followNewest || !holds.has(selectedId)) { const next=visible()[0]?.id; selectedId=next; }
 }
 function node(name,state) { const el=document.querySelector(`[data-node="${name}"]`); el.classList.remove('observed','working','error'); if (state) el.classList.add(state); }
 function renderRuns() {
@@ -70,21 +53,22 @@ function renderRuns() {
     const b=document.createElement('button'); b.className='run'+(selectedId===h.id?' selected':'')+(['settle_failed','interrupted'].includes(h.status)?' failed':'');
     b.setAttribute('aria-pressed',String(selectedId===h.id));
     const title=document.createElement('div'); title.className='run-title'; title.textContent=h.item==='research'?(h.query??h.reading?.query??'Research sources'):human(h.item); title.append(document.createElement('i'));
-    const meta=document.createElement('div'); meta.className='run-meta'; const id=document.createElement('span'),status=document.createElement('span');id.textContent=h.id;status.textContent=h.item==='research'&&h.status==='kept'?'delivered':human(h.status);meta.append(id,status);b.append(title,meta);
-    b.onclick=()=>{stopReplay();selectedId=h.id;followNewest=h.id===list[0]?.id;render();};frag.append(b);
+    const meta=document.createElement('div'); meta.className='run-meta'; const id=document.createElement('span'),status=document.createElement('span');id.textContent=h.id;status.textContent=h.item==='research'&&h.status==='kept'?'delivered':(statusNames[h.status]??human(h.status));meta.append(id,status);b.append(title,meta);
+    b.onclick=()=>{selectedId=h.id;followNewest=h.id===list[0]?.id;render();};frag.append(b);
   }
   $('runs').replaceChildren(frag);
   if(!list.length) {const p=document.createElement('p');p.className='muted pad';p.textContent='No digital purchases yet. Select New purchase to request a research pack.';$('runs').append(p);}
 }
 function renderEvents() {
-  const entries=eventLog.filter(e=>selectedId ? e.id===selectedId : (includeDevice || digital(holds.get(e.id)??{})));
+  const h=current();
+  const entries=h?.steps?.length ? [...h.steps].reverse().map(step=>({...step,source:'recorded',detail:''})) : eventLog.filter(e=>e.id===selectedId);
   const frag=document.createDocumentFragment();
   for (const e of entries.slice(0,30)) {
     const row=document.createElement('div');row.className='event';const ts=document.createElement('time');ts.textContent=time(e.at);
-    const content=document.createElement('div'),title=document.createElement('b'),desc=document.createElement('small');title.textContent=statusNames[e.status]??human(e.status);desc.textContent=(e.source==='snapshot'?'Loaded API record · ':'Live desk event · ')+human(e.detail);content.append(title,desc);row.append(ts,content);frag.append(row);
+    const content=document.createElement('div'),title=document.createElement('b'),desc=document.createElement('small');title.textContent=statusNames[e.status]??human(e.status);desc.textContent=e.detail?human(e.detail):'Receipt '+selectedId;content.append(title,desc);row.append(ts,content);frag.append(row);
   }
   $('events').replaceChildren(frag);
-  if(!entries.length) {const p=document.createElement('p');p.className='muted';p.textContent='Waiting for desk events. No synthetic activity.';$('events').append(p);}
+  if(!entries.length) {const p=document.createElement('p');p.className='muted';p.textContent='Your purchase activity will appear here.';$('events').append(p);}
 }
 function fields(entries) {
   const frag=document.createDocumentFragment();
@@ -107,13 +91,15 @@ function inspect() {
   text('inspector-title',data[0]);text('inspector-desc',data[1]);fields(data[2]);
   const signed=Boolean(r?.signature && r?.devicePublicKey);
   $('verify').disabled=!signed;
+  $('download-receipt').disabled=!h?.reading;
+  $('signature-state').classList.toggle('verified',verification.get(h?.id)?.startsWith('Verified')??false);
   text('signature-state',verification.get(h?.id)??(signed?'Signature present · not yet verified':'No signed delivery available.'));
   text('transaction',h?.settlementTx??'No settlement signature reported');
   const mainnet=['mainnet','mainnet-beta'].includes(h?.network);
   const valid=typeof h?.settlementTx==='string'&&/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(h.settlementTx);
   $('explorer').hidden=!(mainnet&&valid);
   if(mainnet&&valid)$('explorer').href='https://explorer.solana.com/tx/'+h.settlementTx;
-  text('chain-note',h?.network==='localnet'?'Sandbox transaction · test USDC. No mainnet Explorer link.':!h?.network?'This older record has no network field. Explorer linking is unavailable.':'Signature reported by Pay.sh; chain finality is not independently checked here.');
+  text('chain-note',h?.network==='localnet'?'Test USDC settlement · separate from mainnet.':!h?.network?'This older record has no network field. Explorer linking is unavailable.':'Signature reported by Pay.sh; chain finality is not independently checked here.');
   text('raw-json',JSON.stringify(holds.get(selectedId)??{},null,2));$('raw-link').href=h?'/v1/holds/'+encodeURIComponent(h.id):'/v1/holds';
 }
 function renderDelivery(h) {
@@ -136,18 +122,20 @@ function renderDelivery(h) {
 }
 
 function render() {
-  const h=current();renderRuns();renderEvents();renderDelivery(h);renderProgress(h);
+  const h=current();
+  if(submitting && pending(h))text('request-feedback',statusNames[h.status]??human(h.status));
+  renderRuns();renderEvents();renderDelivery(h);renderProgress(h);
   if(previousSelection!==selectedId){animate($('delivery-panel'));previousSelection=selectedId;}
-  text('run-id',h?.id??'AWAITING REQUEST');text('run-title',h?(h.item==='research'?'Research / '+(h.reading?.query??h.query??'source pack'):human(h.item)+' / '+human(h.status)):'Purchase. Verify. Settle.');
+  text('run-id',h?.id??'AWAITING REQUEST');text('run-title',h?'Your purchase':'Ready when you are.');
   text('run-status',h?.item==='research'&&h.status==='kept'?'DELIVERED':(statusNames[h?.status]??human(h?.status??'idle')).toUpperCase());$('graph').classList.toggle('running',Boolean(pending(h)));
   node('authorize',h?'observed':null);node('evidence',pending(h)?'working':h?.reading?'observed':null);node('decision',h?.outcome?'observed':null);node('settle',settled(h)?'observed':['settle_failed','interrupted'].includes(h?.status)?'error':null);node('receipt',h?.reading?.signature?'observed':null);
   text('authorize-label',h?usd(h.hold_usd)+' ceiling accepted':'Awaiting paid request');
   text('evidence-label',h?.status==='waiting_for_power'?'Waiting for power':h?.status==='waiting_for_display'?'Waiting for display':h?.status==='judging'?'Model evaluating evidence':h?.status==='fetching'?'Fetching Crossref records':h?.status==='validating'?'Checking citation contract':pending(h)?'Running service':h?.reading?'Evidence returned':'Provider response / contract');
   text('decision-label',human(h?.outcome??'Waiting for evidence'));
-  text('settle-label',settled(h)?usd(h.charged_usd)+' charged':h?.status==='settle_failed'?'Settlement failed':'No confirmed result');
+  text('settle-label',settled(h)?usd(h.charged_usd)+' charged':h?.status==='settle_failed'?'Not confirmed':'No confirmed result');
   text('receipt-label',h?.reading?.signature?'Ed25519 signature present':'Awaiting signature');
   text('ceiling',usd(h?.hold_usd));text('charged',settled(h)?usd(h.charged_usd):'—');text('returned',settled(h)?usd(h.returned_usd):'—');
-  text('ledger-note',settled(h)?'Returned authorization is not a measured savings claim.':'Amounts appear only after a successful desk settlement.');inspect();
+  text('ledger-note',settled(h)?'Payment completed. Your signed delivery is ready.':'Amounts appear only after a successful desk settlement.');inspect();
 }
 async function verifyReading() {
   const h=current();if(!h?.reading?.signature)return;
@@ -167,7 +155,8 @@ function connection(ok) {live=ok;text('connection',ok?'● stream live':'● rec
 async function sync() {
   const results=await Promise.allSettled([get('/v1/terms'),get('/v1/holds')]);
   if(results[0].status==='fulfilled'){
-    terms=results[0].value;text('network',terms.network==='localnet'?'SOLANA / SANDBOX':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
+    terms=results[0].value;
+    if(!terms.console_purchase)text('request-feedback','Remote console: enter a topic to get its paid API command.');text('network',terms.network==='localnet'?'SOLANA · TEST PAYMENTS':'SOLANA / '+terms.network.toUpperCase());text('device-key','Signer '+short(terms.devicePublicKey));
     $('services').replaceChildren(...Object.keys(terms.items??{}).filter(name=>['research','verify'].includes(name)).map(name=>{const e=document.createElement('span');e.className='service';e.textContent=human(name);return e;}));
   }
   if(results[1].status==='fulfilled')for(const h of results[1].value.holds??[])ingest(h,'snapshot');
@@ -175,12 +164,39 @@ async function sync() {
   if(results.some(r=>r.status==='rejected'))setTimeout(sync,5000);
 }
 document.querySelectorAll('[data-node]').forEach(n=>n.onclick=()=>{inspected=n.dataset.node;inspect();});
-$('replay').onclick=startReplay;
-$('include-device').onchange=e=>{stopReplay();includeDevice=e.target.checked;selectedId=visible()[0]?.id;followNewest=true;render();};
-$('verify').onclick=verifyReading;$('launch').onclick=()=>$('launch-dialog').showModal();$('raw').onclick=()=>$('raw-dialog').showModal();
+
+$('include-device').onchange=e=>{includeDevice=e.target.checked;selectedId=visible()[0]?.id;followNewest=true;render();};
+$('verify').onclick=verifyReading;$('launch').onclick=()=>{$('request-query').focus();$('request-query').scrollIntoView({block:'center',behavior:'smooth'});};$('raw').onclick=()=>$('raw-dialog').showModal();
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
 $('copy-agent').onclick=async()=>{try{await navigator.clipboard.writeText($('purchase-command').textContent);text('copy-agent','Copied');}catch{text('copy-agent','Select and copy the command above');}};
 $('fullscreen').onclick=()=>{const promise=document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();promise?.catch(()=>{});};
 const events=new EventSource('/v1/events');let opened=false;
 events.onopen=()=>{connection(true);if(opened)sync();opened=true;};events.onerror=()=>connection(false);events.onmessage=e=>{try{const h=JSON.parse(e.data);if(!ready)queue.push(h);else{ingest(h,'live');render();}}catch{}};
 render();sync();
+
+document.querySelectorAll('[data-topic]').forEach(button=>button.onclick=()=>{ $('request-query').value=button.dataset.topic; $('request-query').focus(); });
+$('request-form').onsubmit=async event=>{
+  event.preventDefault(); if(submitting || !terms)return;
+  const query=$('request-query').value.trim(); if(query.length<3)return;
+  if(!terms.console_purchase){
+    const body=JSON.stringify({query}).replaceAll("'", "'\\''");
+    const network=terms.network==='localnet'?'--sandbox':'--mainnet';
+    text('purchase-command',`npx --yes --package @solana/pay pay ${network} curl -sS -X POST ${location.origin}/v1/rent/research -H 'Content-Type: application/json' -d '${body}'`);
+    $('launch-dialog').showModal();return;
+  }
+  submitting=true; followNewest=true; $('request-submit').disabled=true;
+  text('request-submit','Working…');text('request-feedback','Authorizing test USDC. Your live purchase will appear below.');
+  try{
+    const response=await fetch('/v1/console/purchase',{method:'POST',headers:{'Content-Type':'application/json','X-Motto-Console':'1'},body:JSON.stringify({query})});
+    const result=await response.json();if(!response.ok)throw new Error(result.error??'Purchase failed');
+    const hold=await get('/v1/holds/'+encodeURIComponent(result.hold_id));ingest(hold,'live');selectedId=hold.id;render();
+    text('request-feedback',hold.status==='kept'?'Sources delivered. Open a source or verify your receipt.':hold.status==='refunded'?'Incomplete delivery. Your authorization was returned.':'Payment needs attention. Inspect the receipt.');
+  }catch(error){text('request-feedback',error.message);}
+  finally{submitting=false;$('request-submit').disabled=false;text('request-submit','Find 3 sources ↗');}
+};
+
+$('download-receipt').onclick=()=>{
+  const h=current();if(!h?.reading)return;
+  const url=URL.createObjectURL(new Blob([JSON.stringify(h,null,2)],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download=`motto-receipt-${h.id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};

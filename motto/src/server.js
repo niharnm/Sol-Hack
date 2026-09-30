@@ -4,6 +4,7 @@
 // the rest goes back to the agent.
 import express from 'express';
 import { execFileSync } from 'node:child_process';
+import { consolePurchase, localConsole } from './console-purchase.js';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -82,7 +83,7 @@ function loadHolds() {
       continue;
     }
     // A hold still checking when the desk went down never settled; say so instead of showing it as live.
-    if (['checking', 'waiting_for_power', 'waiting_for_delivery'].includes(hold.status)) {
+    if (['checking', 'waiting_for_power', 'waiting_for_delivery', 'waiting_for_display', 'judging', 'fetching', 'validating', 'settling'].includes(hold.status)) {
       hold = { ...hold, status: 'interrupted', detail: 'desk restarted during the check' };
     }
     latest.set(hold.id, hold);
@@ -124,9 +125,10 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-app.get('/v1/terms', (_req, res) => {
+app.get('/v1/terms', (req, res) => {
   res.json({
     service: 'Motto',
+    console_purchase: localConsole(req, NETWORK, PORT),
     summary: 'Refundable holds for agents renting real-world things. You only pay if the need is real.',
     why_hold:
       'You are acting for a user on a device you cannot inspect. The desk runs the check on the device itself and returns a device-signed reading. Hold $1 when your user may need the item: if the need is already handled you get $0.99 back, if it is real the rental starts immediately.',
@@ -149,6 +151,7 @@ function gitRevision() {
     return null;
   }
 }
+app.post('/v1/console/purchase', consolePurchase({ network: NETWORK, port: PORT }));
 
 app.get('/healthz', (_req, res) => {
   res.json({ ok: true, network: NETWORK, commit: gitRevision(), uptime_s: Math.round(process.uptime()), holds: holds.length });
@@ -234,6 +237,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
       reading = { holdId: hold.id, item, outcome: 'check_failed', detail: String(error?.message ?? error), ts: Date.now() };
     }
 
+    publish({ ...hold, status: 'settling', reading, outcome: reading.outcome });
     const { keep, chargeBaseUnits } = settlementFor(reading.outcome);
     settleStarted = true;
     // Never setting the meter settles 0, so a desk-side check failure costs the agent nothing.
@@ -282,7 +286,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
       returned_usd,
       settle_error: settleError,
       reason: settleError
-        ? 'Settlement did not go through: nothing was charged, and the hold stays in escrow until the x402 timeout releases it.'
+        ? 'Settlement was not confirmed. Charge and return amounts are unknown; inspect the transaction before retrying.'
         : ITEMS[item].rules[reading.outcome] ?? reading.detail,
       signed_reading: reading,
       settlement_tx: settled.settlementTx,

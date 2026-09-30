@@ -1,0 +1,60 @@
+{
+  "verifiedAt": "2026-09-30T21:36:22.762Z",
+  "signatureVerified": true,
+  "chainFinalityIndependentlyChecked": false,
+  "receipt": {
+    "hold_id": "f5e45e60",
+    "item": "research",
+    "outcome": "delivered",
+    "decision": "kept",
+    "charged_usd": "1.00",
+    "returned_usd": "0.00",
+    "reason": "Three citation records delivered and structural checks passed: $1.00 charged.",
+    "signed_reading": {
+      "holdId": "f5e45e60",
+      "item": "research",
+      "outcome": "delivered",
+      "detail": "citation_pack_delivered",
+      "query": "carbon capture materials",
+      "provider": "Crossref public metadata API",
+      "raw": "3 distinct DOI-backed citation records delivered",
+      "checks": {
+        "required_count": 3,
+        "received_count": 3,
+        "distinct_dois": true,
+        "titles_present": true,
+        "passed": true
+      },
+      "deliverable": {
+        "type": "citation_pack",
+        "query": "carbon capture materials",
+        "citations": [
+          {
+            "title": "Materials and Processes for Carbon Capture",
+            "doi": "10.1201/9781032689944-7",
+            "url": "https://doi.org/10.1201%2F9781032689944-7",
+            "publisher": "CRC Press"
+          },
+          {
+            "title": "Virtual Screening of Materials for Carbon Capture",
+            "doi": "10.1002/9781119091219.ch5",
+            "url": "https://doi.org/10.1002%2F9781119091219.ch5",
+            "publisher": "Wiley"
+          },
+          {
+            "title": "Poly(Amidoamine) Dendrimers for Carbon Capture",
+            "doi": "10.1002/9781119091219.ch10",
+            "url": "https://doi.org/10.1002%2F9781119091219.ch10",
+            "publisher": "Wiley"
+          }
+        ]
+      },
+      "limitations": "Checks cover count, unique DOI identifiers and nonempty titles. They do not establish semantic relevance, paper quality, DOI resolution or full-text access. Crossref metadata is public; this service packages and verifies it.",
+      "ts": 1790804149972,
+      "signature": "fff31477ed198dc295ffe45152a0388699b4491c0a13373c20b611abdd682d5bb4b244e9f0baffe20be40fd2349696f4adba674de657568c4f71876217062701",
+      "devicePublicKey": "9c10ab8e0d6809c4d0e643dc569496c9f96215dad2b75110baf19c91396faff0"
+    },
+    "settlement_tx": "29H97sNccRkYJrXJd4sP4P7Xt3ustHycTTKhz4qRqt5LZXktETEw3a65MtkF3C7gEurQr1PC21wqRqHSesjwhEZE",
+    "network": "localnet"
+  }
+}
