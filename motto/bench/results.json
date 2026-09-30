@@ -1146,7 +1146,7 @@
     },
     {
       "key": "small_with_desk",
-      "label": "Sonnet 5 + Deposit Desk",
+      "label": "Sonnet 5 + Motto",
       "model": "claude-sonnet-5",
       "desk": true,
       "scenarios": 50,

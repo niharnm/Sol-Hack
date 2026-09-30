@@ -1,5 +1,5 @@
 {
-  "name": "deposit-desk",
+  "name": "motto",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -7,6 +7,7 @@
     "test": "node --test test/*.test.js",
     "start": "node src/server.js",
     "bench": "node bench/generate.js && node bench/run.js",
+    "buyer": "node buyer/buy.js",
     "tunnel": "cloudflared tunnel --url http://127.0.0.1:8787"
   },
   "keywords": [],

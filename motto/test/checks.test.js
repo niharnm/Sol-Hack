@@ -11,7 +11,8 @@ import { join } from 'node:path';
 // throwaway key before importing. The real keys/device.pem is never touched.
 const dir = mkdtempSync(join(tmpdir(), 'desk-checks-'));
 process.env.DEVICE_KEY_PATH = join(dir, 'device.pem');
-const { chargerWaitMs, checkCharger, checkHotspot, devicePublicKey, readNetwork, readPower } = await import('../src/checks.js');
+const { chargerWaitMs, checkBatteryPack, checkCharger, checkDisplay, checkHotspot, checkStorage, devicePublicKey, numberIn, readNetwork, readPower } =
+  await import('../src/checks.js');
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 // ed25519 SPKI DER is this fixed 12-byte prefix followed by the raw 32-byte key.
@@ -122,4 +123,57 @@ test('readNetwork and checkHotspot follow VENUE_GATEWAY', async t => {
   const handled = await checkHotspot({ holdId: 'h-on' });
   assert.deepEqual([handled.outcome, handled.detail], ['already_handled', 'device_on_venue_network']);
   assertSigned(handled);
+});
+
+test('battery pack: AC or enough charge is handled, low charge is a real need', async t => {
+  t.after(() => delete process.env.MOCK_BATTERY);
+  process.env.MOCK_BATTERY = 'ac';
+  const onAc = await checkBatteryPack({ holdId: 'b1', minPercent: 50 });
+  assert.deepEqual([onAc.outcome, onAc.detail], ['already_handled', 'device_on_AC']);
+  assertSigned(onAc);
+  process.env.MOCK_BATTERY = '64';
+  assert.equal((await checkBatteryPack({ holdId: 'b2', minPercent: 50 })).outcome, 'already_handled');
+  process.env.MOCK_BATTERY = '18';
+  const low = await checkBatteryPack({ holdId: 'b3', minPercent: 50 });
+  assert.deepEqual([low.outcome, low.detail], ['delivered', 'battery_18pct_below_50']);
+  assertSigned(low);
+});
+
+test('storage: enough free disk is handled, too little is a real need', async t => {
+  t.after(() => delete process.env.MOCK_FREE_GB);
+  process.env.MOCK_FREE_GB = '120';
+  const plenty = await checkStorage({ holdId: 's1', neededGb: 50 });
+  assert.deepEqual([plenty.outcome, plenty.detail], ['already_handled', 'free_120gb_covers_50gb']);
+  process.env.MOCK_FREE_GB = '3.5';
+  const short = await checkStorage({ holdId: 's2', neededGb: 50 });
+  assert.deepEqual([short.outcome, short.detail], ['delivered', 'free_3.5gb_short_of_50gb']);
+  assertSigned(short);
+});
+
+test('display: connected is handled, connected mid-wait is delivered, never is not_delivered', async t => {
+  t.after(() => delete process.env.MOCK_DISPLAY);
+  process.env.MOCK_DISPLAY = 'external';
+  assert.equal((await checkDisplay({ holdId: 'd1', waitMs: 0 })).outcome, 'already_handled');
+  process.env.MOCK_DISPLAY = 'internal';
+  const updates = [];
+  const never = await checkDisplay({ holdId: 'd2', waitMs: 1200, onUpdate: u => updates.push(u.status) });
+  assert.deepEqual([never.outcome, updates], ['not_delivered', ['waiting_for_delivery']]);
+  setTimeout(() => (process.env.MOCK_DISPLAY = 'external'), 300);
+  const plugged = await checkDisplay({ holdId: 'd3', waitMs: 5000 });
+  assert.deepEqual([plugged.outcome, plugged.detail], ['delivered', 'display_connected']);
+  assertSigned(plugged);
+});
+
+test('numberIn clamps numeric params and falls back on bad input', () => {
+  assert.equal(numberIn(30, 1, 100, 50), 30);
+  assert.equal(numberIn('150', 1, 100, 50), 100);
+  assert.equal(numberIn(-5, 1, 100, 50), 1);
+  for (const bad of [undefined, null, '', 'abc', NaN, Infinity, {}, [5]]) assert.equal(numberIn(bad, 1, 100, 50), 50);
+});
+
+test('real device readers return a reading on this Mac', { skip: process.platform !== 'darwin' }, async () => {
+  const { readBattery, readDisk, readDisplays } = await import('../src/checks.js');
+  assert.ok(Number.isFinite((await readBattery()).percent));
+  assert.ok((await readDisk()).freeGb > 0);
+  assert.equal(typeof (await readDisplays()).external, 'boolean');
 });

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Deposit Desk</title>
+<title>Motto</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23f5a524'/%3E%3Cpath d='M10 16.5l4 4 8-9' fill='none' stroke='%230b0d10' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -136,10 +136,10 @@
   @keyframes pop { 0% { transform: scale(.5); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
   @keyframes bump { 40% { transform: scale(1.15); } }
   @keyframes slide { from { opacity: 0; transform: translateY(-10px); } }
-  .hero[data-status="checking"], .hero[data-status="waiting_for_power"] { animation: glow 1.6s ease-in-out infinite; }
-  .hero[data-status="checking"] .state-word, .hero[data-status="waiting_for_power"] .state-word,
-  .row[data-status="checking"] .badge, .row[data-status="waiting_for_power"] .badge { animation: fade 1.2s ease-in-out infinite; }
-  .hero[data-status="checking"] .state-icon svg, .hero[data-status="waiting_for_power"] .state-icon svg { animation: spin 1.1s linear infinite; }
+  .hero[data-status="checking"], .hero[data-status="waiting_for_power"], .hero[data-status="waiting_for_delivery"], .hero[data-status="judging"] { animation: glow 1.6s ease-in-out infinite; }
+  .hero[data-status="checking"] .state-word, .hero[data-status="waiting_for_power"] .state-word, .hero[data-status="waiting_for_delivery"] .state-word, .hero[data-status="judging"] .state-word,
+  .row[data-status="checking"] .badge, .row[data-status="waiting_for_power"] .badge, .row[data-status="waiting_for_delivery"] .badge, .row[data-status="judging"] .badge { animation: fade 1.2s ease-in-out infinite; }
+  .hero[data-status="checking"] .state-icon svg, .hero[data-status="waiting_for_power"] .state-icon svg, .hero[data-status="waiting_for_delivery"] .state-icon svg, .hero[data-status="judging"] .state-icon svg { animation: spin 1.1s linear infinite; }
   .hero.enter { animation: drop .5s cubic-bezier(.2, .9, .3, 1); }
   .hero.flash { animation: ring 1.1s ease-out, wash 1.5s ease-out; }
   .pop { animation: pop .6s cubic-bezier(.2, 1.5, .4, 1); }
@@ -162,7 +162,7 @@
 <div class="page">
   <header class="top">
     <div>
-      <h1>Deposit Desk</h1>
+      <h1>Motto</h1>
       <div class="tag">An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.</div>
     </div>
     <div class="controls">
@@ -274,11 +274,11 @@
   let heroId = null;
   const MAX_ROWS = 12;
   const isMainnet = () => network === 'mainnet' || network === 'mainnet-beta';
-  const RANK = { checking: 0, waiting_for_power: 1 }; // every other status counts as settled (rank 2)
+  const RANK = { checking: 0, waiting_for_power: 1, waiting_for_delivery: 1, judging: 1 }; // every other status counts as settled (rank 2)
   const rank = s => RANK[s] ?? 2;
   const isPending = h => rank(h.status) < 2;
-  const LABEL = { charger: 'Charger', hotspot: 'Hotspot' };
-  const WORD = { checking: 'Checking', waiting_for_power: 'Checking', kept: 'Kept', refunded: 'Refunded', settle_failed: 'Failed', interrupted: 'Interrupted' };
+  const LABEL = { charger: 'Charger', hotspot: 'Hotspot', battery_pack: 'Battery pack', storage: 'Cloud storage', display: 'Monitor', verify: 'Verify' };
+  const WORD = { checking: 'Checking', waiting_for_power: 'Checking', waiting_for_delivery: 'Checking', judging: 'Judging', kept: 'Kept', refunded: 'Refunded', settle_failed: 'Failed', interrupted: 'Interrupted' };
   const ICON_ATTR = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
   const ICON = {
     checking: `<svg ${ICON_ATTR}><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 0-9-9"/></svg>`,
@@ -286,7 +286,7 @@
     refunded: `<svg ${ICON_ATTR}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
     settle_failed: `<svg ${ICON_ATTR}><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 16.5v.5"/></svg>`,
   };
-  const iconFor = s => ICON[s === 'waiting_for_power' ? 'checking' : s] ?? ICON.settle_failed;
+  const iconFor = s => ICON[isPending({ status: s }) ? 'checking' : s] ?? ICON.settle_failed;
 
   /* ---------- sound: WebAudio oscillators only, no audio files ---------- */
   const SOUND_KEY = 'dd.sound';
@@ -403,9 +403,16 @@
   function whyText(h) {
     const item = terms && terms.items && terms.items[h.item];
     if (h.status === 'waiting_for_power') return 'Device is on battery. Waiting for power to arrive…';
+    if (h.status === 'waiting_for_delivery') return 'Nothing connected yet. Waiting for the rental to arrive…';
+    if (h.status === 'judging') return 'Reading the evidence. A model is deciding whether the condition is true…';
     if (h.status === 'checking') return (item && item.check) || 'Running the check on the device…';
     if (h.status === 'settle_failed') return `Check finished (${humanize(h.detail)}) but settlement failed.`;
     const outcome = h.outcome || (h.reading && h.reading.outcome);
+    // Verify: the agent's own condition is the headline, the model's reason sits under it.
+    if (h.item === 'verify' && h.reading && h.reading.condition) {
+      const rule = (item && item.rules && item.rules[outcome]) || '';
+      return `“${h.reading.condition}”  ${h.reading.reason ? sentence(h.reading.reason) + ' ' : ''}${rule}`.trim();
+    }
     return (item && item.rules && item.rules[outcome]) || sentence(humanize(h.detail));
   }
   function moneyHTML(h) {

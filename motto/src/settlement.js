@@ -7,8 +7,9 @@ export const CHECK_FEE_BASE_UNITS = 10_000n;
 
 export function settlementFor(outcome, settleError) {
   const keep = outcome === 'delivered';
-  // The desk's own check threw: the agent paid for nothing, so it owes nothing.
-  const chargeBaseUnits = keep ? HOLD_BASE_UNITS : outcome === 'check_failed' ? 0n : CHECK_FEE_BASE_UNITS;
+  // The desk's own check threw, or could not tell: the agent got no answer, so it owes nothing.
+  const free = outcome === 'check_failed' || outcome === 'inconclusive';
+  const chargeBaseUnits = keep ? HOLD_BASE_UNITS : free ? 0n : CHECK_FEE_BASE_UNITS;
   const charged = chargeBaseUnits === HOLD_BASE_UNITS ? '1.00' : chargeBaseUnits === 0n ? '0.00' : '0.01';
   const returned = chargeBaseUnits === HOLD_BASE_UNITS ? '0.00' : chargeBaseUnits === 0n ? '1.00' : '0.99';
   if (settleError) {

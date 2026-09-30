@@ -13,8 +13,10 @@ test('already handled and not delivered charge the check fee only', () => {
   }
 });
 
-test('a failed check charges nothing', () => {
-  assert.deepEqual(settlementFor('check_failed'), { keep: false, chargeBaseUnits: 0n, decision: 'refunded', charged_usd: '0.00', returned_usd: '1.00' });
+test('a failed or inconclusive check charges nothing', () => {
+  for (const outcome of ['check_failed', 'inconclusive']) {
+    assert.deepEqual(settlementFor(outcome), { keep: false, chargeBaseUnits: 0n, decision: 'refunded', charged_usd: '0.00', returned_usd: '1.00' }, outcome);
+  }
 });
 
 test('a failed settle reports no money moved, whatever the outcome', () => {

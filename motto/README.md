@@ -1,8 +1,8 @@
-# Deposit Desk
+# Motto
 
 > An agent authorizes a dollar. We verify delivery, settle what’s owed, and return the rest.
 
-**Live:** TODO before submit: public URL | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** TODO before submit: PR link
+**Live:** https://motto.tail039d5c.ts.net (Pay.sh sandbox desk, runs on Nihar's laptop through Tailscale Funnel) | **Video (2 min):** TODO before submit: video link | **Pay.sh catalog PR:** TODO before submit: PR link
 
 A deposit desk for agents buying things in the real world. The agent puts $1 USDC on hold, the desk
 checks whether the need is already handled, then keeps the money as the rental or sends it back.
@@ -27,7 +27,7 @@ the reason onchain (`DESK REFUND hold:ab12 charger device_on_AC sig:1f2e3d4c`).
 2. It calls `POST /v1/rent/<item>`. The desk answers `402` with an x402 `upto` offer for $1.00 USDC.
    The agent's `pay` client signs and retries, and `@solana/pay-kit` escrows the $1.00 ceiling. That
    is the hold: nothing has been paid to the desk yet.
-3. The desk runs the check on the device (power or network) and signs the reading with its ed25519
+3. The desk runs the check on the device (power, network, battery, disk, displays, or a model judging a stated condition) and signs the reading with its ed25519
    device key.
 4. The desk settles what is owed: $0.01 if the need was already handled (or the charger never
    delivered power), $1.00 if the need was real and delivered. The rest of the hold returns to the
@@ -36,7 +36,7 @@ the reason onchain (`DESK REFUND hold:ab12 charger device_on_AC sig:1f2e3d4c`).
    signature. The dashboard shows it live, and an optional receipt memo writes the reason onchain.
 
 ```
-Claude (buyer)  --pay claude / pay mcp-->  Deposit Desk API (Express + @solana/pay-kit)
+Claude (buyer)  --pay claude / pay mcp-->  Motto API (Express + @solana/pay-kit)
                                               | 402 upto offer, verify, escrow
                                               | run check (pmset / route) + sign reading
                                               | charge(actual) -> settle -> refund rest
@@ -58,7 +58,21 @@ pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/charger
 pay --sandbox curl -X POST http://127.0.0.1:8787/v1/rent/hotspot
 ```
 
-Let Claude rent on its own, as a remote agent that cannot inspect the device (pay tools only, no shell):
+Let Claude rent on its own, as a remote agent that cannot inspect the device. The packaged buyer runs Claude with
+pay tools only (no shell, no files, none of the operator's settings), lets it read the terms and pick the item, then
+checks its report against the desk's own hold log:
+
+```bash
+npm run buyer -- --list                       # situations: low-battery, plugged-in, battery-pack, big-download, no-wifi, two-screens, second-screen
+npm run buyer -- --scenario big-download      # verified run: picked storage, held $1, 450.8 GB free, $0.99 back
+npm run buyer -- "My laptop is at 12% and has a 3 hour render left"
+npm run buyer -- --desk https://motto.tail039d5c.ts.net --mainnet --scenario no-wifi
+```
+
+On mainnet the buyer's pay MCP server enforces a $1.00 per payment cap for the desk's origin only. pay 0.29 rejects
+every permission rule in the sandbox ("invalid Solana network"), so sandbox runs have no pay-side cap and say so.
+
+The same thing by hand:
 
 ```bash
 echo "You are a personal agent running in the cloud for your user. Your user's laptop is at a hackathon and has a long job running; you cannot inspect the laptop yourself. A deposit desk sells refundable charger holds for that device; terms are at http://127.0.0.1:8787/v1/terms. Use your pay tools to read the terms and, if it makes sense, rent. Report in 3 short lines: what you paid, what came back, and why." \
@@ -71,7 +85,8 @@ Also:
 ```bash
 npm test                                          # tests for the checks and the HTTP API
 npm run bench                                     # rerun the benchmark, rewrites bench/results.json
-cloudflared tunnel --url http://127.0.0.1:8787    # public https URL for agents on other machines (or: npm run tunnel)
+tailscale funnel --bg 8787                        # permanent public URL: https://motto.tail039d5c.ts.net
+cloudflared tunnel --url http://127.0.0.1:8787    # fallback: temporary URL (or: npm run tunnel)
 ```
 
 ## Dashboard
@@ -88,6 +103,10 @@ for fullscreen. Sound is off until you click the Sound button.
 | `GET /v1/terms` | free | Items, hold, fee, check question, refund rules, device public key |
 | `POST /v1/rent/charger` | up to $1 | Body `{ "wait_seconds": 30 }` (clamped to 0 to 240). Runs the charger check, settles |
 | `POST /v1/rent/hotspot` | up to $1 | Runs the network check, settles |
+| `POST /v1/rent/battery_pack` | up to $1 | Body `{ "min_percent": 50 }`. On AC or at least that charge: refunded; below it: pack rental kept |
+| `POST /v1/rent/storage` | up to $1 | Body `{ "needed_gb": 10 }`. Enough free disk: refunded; not enough: storage rental kept |
+| `POST /v1/rent/display` | up to $1 | Body `{ "wait_seconds": 30 }`. External display already connected: refunded; one connected within the wait: kept; never: refunded |
+| `POST /v1/rent/verify` | up to $1 | Body `{ "condition": "...", "evidence_urls": [...] }`. A model judges the condition on device evidence and up to 3 URLs: true refunded, false kept, unknown $0 |
 | `GET /v1/holds` | free | Hold log |
 | `GET /v1/holds/:id` | free | One hold by id, JSON 404 if unknown |
 | `GET /v1/events` | free | Server-sent events for the dashboard |
@@ -103,7 +122,7 @@ An unpaid call to `/v1/rent/*` gets the `402` with the x402 `upto` offer.
 
 ## Benchmark
 
-A cheaper model with the desk beat the frontier model on wasted spend: Sonnet 5 with Deposit Desk
+A cheaper model with the desk beat the frontier model on wasted spend: Sonnet 5 with Motto
 wasted $0.19 and missed no real need, Fable 5.1 alone wasted $16.00. Three runs on the same 50 generated
 purchase scenarios (31 of them are real needs). The two runs without the desk choose between buy and
 skip from text context. The third can also put a hold on the desk; it held in all 50 scenarios.
@@ -114,7 +133,7 @@ Served at `GET /v1/bench`, rerun with `npm run bench`. Run time from `results.js
 |---|---|---|---|---|---|---|---|---|---|
 | Fable 5.1 alone | `claude-fable-5-1` | 50 | 16.00 | 2 | 31 | 93.5% | 45.00 | 1.1504 | 5828 |
 | Sonnet 5 alone | `claude-sonnet-5` | 50 | 7.00 | 16 | 31 | 48.4% | 22.00 | 0.1095 | 3717 |
-| Sonnet 5 + Deposit Desk | `claude-sonnet-5` | 50 | 0.19 | 0 | 31 | 100% | 31.19 | 0.1207 | 3770 |
+| Sonnet 5 + Motto | `claude-sonnet-5` | 50 | 0.19 | 0 | 31 | 100% | 31.19 | 0.1207 | 3770 |
 
 Wasted is money spent on needs that were already handled. A missed need is a real need the agent
 skipped. With the desk, an already handled need costs only the $0.01 check fee, which is all of the

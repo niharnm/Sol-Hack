@@ -1,4 +1,4 @@
-// Runs the benchmark: frontier model alone vs smaller model with Deposit Desk.
+// Runs the benchmark: frontier model alone vs smaller model with Motto.
 // Models are called through the Claude CLI with a minimal context. The desk's
 // check is simulated here from each scenario's hidden truth (in the live product
 // it reads the device). Results go to bench/results.json.
@@ -12,7 +12,7 @@ const CONCURRENCY = Number(process.env.BENCH_CONCURRENCY ?? 6);
 const AGENTS = [
   { key: 'frontier_alone', label: 'Fable 5.1 alone', model: 'claude-fable-5-1', desk: false },
   { key: 'small_alone', label: 'Sonnet 5 alone', model: 'claude-sonnet-5', desk: false },
-  { key: 'small_with_desk', label: 'Sonnet 5 + Deposit Desk', model: 'claude-sonnet-5', desk: true },
+  { key: 'small_with_desk', label: 'Sonnet 5 + Motto', model: 'claude-sonnet-5', desk: true },
 ];
 
 const SYSTEM = 'You are a personal purchasing agent acting for a user. You cannot see or query the user\'s device. Reply with a single JSON object only.';
@@ -22,7 +22,7 @@ function prompt(s, desk) {
   const options = desk
     ? `Options:
 - "buy": rent now for $1.00, charged in full.
-- "hold": put $1.00 on hold at Deposit Desk. The desk checks the device itself. If the need is already handled you get $0.99 back ($0.01 check fee). If the need is real the rental starts and $1.00 is charged.
+- "hold": put $1.00 on hold at Motto. The desk checks the device itself. If the need is already handled you get $0.99 back ($0.01 check fee). If the need is real the rental starts and $1.00 is charged.
 - "skip": do nothing.`
     : `Options:
 - "buy": rent now for $1.00, charged in full.

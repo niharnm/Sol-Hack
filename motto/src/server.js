@@ -1,4 +1,4 @@
-// Deposit Desk: agents put USDC on hold for a real-world rental, the desk
+// Motto: agents put USDC on hold for a real-world rental, the desk
 // checks whether the need is already handled, then settles only what is owed.
 // Built on Pay.sh's x402 `upto` scheme: authorize a ceiling, settle actual usage,
 // the rest goes back to the agent.
@@ -7,44 +7,19 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createPayKit, Signer, usage, usd } from '@solana/pay-kit';
-import { chargerWaitMs, checkCharger, checkHotspot, devicePublicKey } from './checks.js';
+import { devicePublicKey } from './checks.js';
+import { ITEMS, publicTerms } from './items.js';
 import { postReceipt } from './receipt.js';
 import { settlementFor } from './settlement.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const NETWORK = process.env.NETWORK ?? 'localnet';
 const RPC_URL = process.env.RPC_URL ?? (NETWORK === 'localnet' ? 'https://402.surfnet.dev:8899' : undefined);
-// Clamped like a request value: the wait must end inside the x402 offer's 300 second timeout.
-const CHARGER_WAIT_MS = chargerWaitMs(Number(process.env.CHARGER_WAIT_MS ?? 30_000) / 1000, 30_000);
 // Hold log location. Tests and parallel runs point this at a scratch directory.
 const DATA_DIR = process.env.DATA_DIR ?? 'data';
 const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 // Enough history for the dashboard counters without growing memory forever.
 const MAX_HOLDS = 500;
-
-const ITEMS = {
-  charger: {
-    hold_usd: '1.00',
-    check_fee_usd: '0.01',
-    check: 'Is the device already drawing AC power?',
-    rules: {
-      already_handled: 'Device already on power: charge the $0.01 check fee, $0.99 returned.',
-      delivered: 'Device on battery, power delivered within the wait window: rental kept, $1.00 charged.',
-      not_delivered: 'Power never arrived: charge the $0.01 check fee, $0.99 returned.',
-      check_failed: 'The check itself failed: nothing charged, $1.00 returned.',
-    },
-  },
-  hotspot: {
-    hold_usd: '1.00',
-    check_fee_usd: '0.01',
-    check: 'Is the device already on the venue network?',
-    rules: {
-      already_handled: 'Device already on venue network: charge the $0.01 check fee, $0.99 returned.',
-      delivered: 'Device off venue network: hotspot rental kept, $1.00 charged.',
-      check_failed: 'The check itself failed: nothing charged, $1.00 returned.',
-    },
-  },
-};
 
 const operatorSigner = await Signer.env('OPERATOR_KEY');
 const pay = await createPayKit({
@@ -54,10 +29,9 @@ const pay = await createPayKit({
   ...(operatorSigner || process.env.RECIPIENT
     ? { operator: { ...(operatorSigner ? { signer: operatorSigner } : {}), ...(process.env.RECIPIENT ? { recipient: process.env.RECIPIENT } : {}) } }
     : {}),
-  pricing: {
-    charger: usage(usd(ITEMS.charger.hold_usd), { description: 'Refundable $1 charger hold' }),
-    hotspot: usage(usd(ITEMS.hotspot.hold_usd), { description: 'Refundable $1 hotspot hold' }),
-  },
+  pricing: Object.fromEntries(
+    Object.entries(ITEMS).map(([name, item]) => [name, usage(usd(item.hold_usd), { description: `Refundable $${item.hold_usd.replace(/\.00$/, '')} ${name.replace('_', ' ')} hold` })]),
+  ),
 });
 
 // Hold log: in memory for the dashboard, appended to disk for the record.
@@ -105,7 +79,7 @@ function loadHolds() {
       continue;
     }
     // A hold still checking when the desk went down never settled; say so instead of showing it as live.
-    if (hold.status === 'checking' || hold.status === 'waiting_for_power') {
+    if (['checking', 'waiting_for_power', 'waiting_for_delivery'].includes(hold.status)) {
       hold = { ...hold, status: 'interrupted', detail: 'desk restarted during the check' };
     }
     latest.set(hold.id, hold);
@@ -149,15 +123,15 @@ app.use(express.static('public'));
 
 app.get('/v1/terms', (_req, res) => {
   res.json({
-    service: 'Deposit Desk',
+    service: 'Motto',
     summary: 'Refundable holds for agents renting real-world things. You only pay if the need is real.',
     why_hold:
       'You are acting for a user on a device you cannot inspect. The desk runs the check on the device itself and returns a device-signed reading. Hold $1 when your user may need the item: if the need is already handled you get $0.99 back, if it is real the rental starts immediately.',
     network: NETWORK,
     scheme: 'x402 upto: you authorize the hold, the desk settles only what is owed, the rest returns to you.',
     devicePublicKey,
-    items: ITEMS,
-    endpoints: { charger: 'POST /v1/rent/charger', hotspot: 'POST /v1/rent/hotspot' },
+    items: publicTerms(),
+    endpoints: Object.fromEntries(Object.keys(ITEMS).map(name => [name, `POST /v1/rent/${name}`])),
   });
 });
 
@@ -193,7 +167,10 @@ app.get('/v1/events', (req, res) => {
 
 app.post('/v1/rent/:item', async (req, res, next) => {
   const item = req.params.item;
-  if (!ITEMS[item]) return res.status(404).json({ error: `unknown item "${item}"`, items: Object.keys(ITEMS) });
+  if (!Object.hasOwn(ITEMS, item)) return res.status(404).json({ error: `unknown item "${item}"`, items: Object.keys(ITEMS) });
+  // Reject a request the check cannot run before any money is held.
+  const invalid = ITEMS[item].validate?.(req.body);
+  if (invalid) return res.status(400).json({ error: invalid, params: ITEMS[item].params });
 
   let result;
   try {
@@ -235,10 +212,7 @@ app.post('/v1/rent/:item', async (req, res, next) => {
 
     let reading;
     try {
-      reading =
-        item === 'charger'
-          ? await checkCharger({ holdId: hold.id, waitMs: chargerWaitMs(req.body?.wait_seconds, CHARGER_WAIT_MS), onUpdate: u => publish({ ...hold, ...u }) })
-          : await checkHotspot({ holdId: hold.id });
+      reading = await ITEMS[item].run({ holdId: hold.id, body: req.body, onUpdate: u => publish({ ...hold, ...u }) });
     } catch (error) {
       reading = { holdId: hold.id, item, outcome: 'check_failed', detail: String(error?.message ?? error), ts: Date.now() };
     }
@@ -318,11 +292,8 @@ app.get('/openapi.json', async (_req, res, next) => {
   try {
     res.json(
       await pay.openapi(
-        [
-          { method: 'POST', path: '/v1/rent/charger', gate: 'charger', summary: 'Start a charger rental with a refundable $1 hold' },
-          { method: 'POST', path: '/v1/rent/hotspot', gate: 'hotspot', summary: 'Start a hotspot rental with a refundable $1 hold' },
-        ],
-        { info: { title: 'Deposit Desk', version: '1.0.0', description: 'Refundable holds for agents renting real-world things.' } },
+        Object.entries(ITEMS).map(([name, item]) => ({ method: 'POST', path: `/v1/rent/${name}`, gate: name, summary: item.summary })),
+        { info: { title: 'Motto', version: '1.0.0', description: 'Refundable holds for agents renting real-world things.' } },
       ),
     );
   } catch (error) {
@@ -343,6 +314,6 @@ app.use((error, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Deposit Desk on http://127.0.0.1:${PORT}  network=${NETWORK}  recipient=${pay.config.operator.recipient}  holds=${holds.length}`);
+  console.log(`Motto on http://127.0.0.1:${PORT}  network=${NETWORK}  recipient=${pay.config.operator.recipient}  holds=${holds.length}`);
   console.log(`Device key ${devicePublicKey}`);
 });
