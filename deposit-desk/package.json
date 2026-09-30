@@ -1,0 +1,20 @@
+{
+  "name": "deposit-desk",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@solana/kit": "^6.10.0",
+    "@solana/pay-kit": "^0.12.0",
+    "bs58": "^6.0.0",
+    "express": "^5.2.1"
+  }
+}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deposit Desk</title>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #13161b; --line: #232830; --text: #e8eaed; --muted: #8b93a1;
+    --keep: #f5a524; --refund: #17c964; --wait: #6c8cff; --fail: #f31260;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  header { padding: 28px 32px 8px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+  .tag { color: var(--muted); margin-top: 4px; }
+  .net { font: 12px ui-monospace, monospace; color: var(--muted); border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 16px 32px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .stat b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 13px; }
+  .loop { padding: 0 32px 8px; color: var(--muted); font-size: 13px; }
+  .loop em { color: var(--text); font-style: normal; }
+  main { padding: 8px 32px 40px; display: grid; gap: 10px; }
+  .hold { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--wait); border-radius: 12px; padding: 14px 18px; display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; animation: in .3s ease; }
+  .hold.kept { border-left-color: var(--keep); }
+  .hold.refunded { border-left-color: var(--refund); }
+  .hold.settle_failed { border-left-color: var(--fail); }
+  .title { font-weight: 600; }
+  .badge { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 3px 10px; border-radius: 999px; align-self: start; }
+  .kept .badge { background: color-mix(in srgb, var(--keep) 18%, transparent); color: var(--keep); }
+  .refunded .badge { background: color-mix(in srgb, var(--refund) 18%, transparent); color: var(--refund); }
+  .checking .badge, .waiting_for_power .badge { background: color-mix(in srgb, var(--wait) 18%, transparent); color: var(--wait); }
+  .settle_failed .badge { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
+  .meta { color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
+  .money { font-variant-numeric: tabular-nums; }
+  .links { grid-column: 1 / -1; font: 12px ui-monospace, monospace; display: flex; gap: 14px; flex-wrap: wrap; }
+  a { color: #8fb2ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
+  @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
+  @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } header, .stats, main, .loop { padding-left: 16px; padding-right: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Deposit Desk</h1>
+    <div class="tag">Agents only pay for things that actually happened.</div>
+  </div>
+  <div class="net" id="net">connecting…</div>
+</header>
+<section class="stats">
+  <div class="stat"><b id="s-holds">0</b><span>holds</span></div>
+  <div class="stat"><b id="s-kept">0</b><span>rentals kept</span></div>
+  <div class="stat"><b id="s-refunded">0</b><span>holds refunded</span></div>
+  <div class="stat"><b id="s-saved">$0.00</b><span>returned to agents</span></div>
+</section>
+<div class="loop"><em>Hold</em> $1 USDC → <em>check</em> the device → <em>keep</em> if the need is real, <em>refund</em> $0.99 if it is already handled. Settled on Solana via Pay.sh x402 upto.</div>
+<main id="list"><div class="empty">Waiting for an agent to rent something…</div></main>
+<script>
+  const holds = new Map();
+  let network = 'localnet';
+  const explorer = sig => network === 'mainnet'
+    ? `https://explorer.solana.com/tx/${sig}`
+    : null;
+  const label = { charger: 'Charger', hotspot: 'Hotspot' };
+  const status = { checking: 'checking', waiting_for_power: 'waiting for power', kept: 'kept', refunded: 'refunded', settle_failed: 'settle failed' };
+  const short = s => s ? `${s.slice(0, 6)}…${s.slice(-6)}` : '';
+  const txLink = (name, sig) => {
+    if (!sig) return '';
+    const url = explorer(sig);
+    return url ? `<a href="${url}" target="_blank" rel="noopener">${name} ${short(sig)}</a>` : `<span>${name} ${short(sig)}</span>`;
+  };
+
+  function render() {
+    const list = [...holds.values()].sort((a, b) => b.startedAt - a.startedAt);
+    const done = list.filter(h => h.status === 'kept' || h.status === 'refunded');
+    document.getElementById('s-holds').textContent = list.length;
+    document.getElementById('s-kept').textContent = done.filter(h => h.status === 'kept').length;
+    document.getElementById('s-refunded').textContent = done.filter(h => h.status === 'refunded').length;
+    document.getElementById('s-saved').textContent = '$' + done.reduce((t, h) => t + Number(h.returned_usd || 0), 0).toFixed(2);
+    const el = document.getElementById('list');
+    if (!list.length) return;
+    el.innerHTML = list.map(h => `
+      <article class="hold ${h.status}">
+        <div class="title">${label[h.item] ?? h.item} · hold ${h.id}
+          <span class="money">${h.charged_usd ? `· charged $${h.charged_usd} · returned $${h.returned_usd}` : `· $${h.hold_usd} on hold`}</span></div>
+        <div class="badge">${status[h.status] ?? h.status}</div>
+        <div class="meta">${h.detail ? h.detail.replaceAll('_', ' ') : 'running check…'}${h.payer ? ` · agent ${short(h.payer)}` : ''}${h.reading?.signature ? ` · device signed ${h.reading.signature.slice(0, 8)}` : ''}</div>
+        <div class="links">${txLink('settlement', h.settlementTx)}${txLink('receipt memo', h.receiptTx)}${h.settleError ? `<span>${h.settleError}</span>` : ''}</div>
+      </article>`).join('');
+  }
+
+  fetch('/v1/terms').then(r => r.json()).then(t => { network = t.network; document.getElementById('net').textContent = `solana ${t.network} · device ${t.devicePublicKey.slice(0, 8)}`; render(); });
+  fetch('/v1/holds').then(r => r.json()).then(({ holds: list }) => { list.forEach(h => holds.set(h.id, h)); render(); });
+  const es = new EventSource('/v1/events');
+  es.onmessage = e => { const h = JSON.parse(e.data); holds.set(h.id, { ...holds.get(h.id), ...h }); render(); };
+</script>
+</body>
+</html>
