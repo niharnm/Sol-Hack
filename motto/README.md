@@ -25,6 +25,12 @@ Motto checks that the result contains three records, each title is nonempty, and
 distinct. These checks do not establish topical relevance, scientific quality, DOI resolution, or
 full-text access.
 
+An operator can also configure merchant offers through the provider registry. Those offers are
+returned by `GET /v1/providers`; they are not silently added to the built-in research catalog or its
+static OpenAPI document. A configured offer is usable only when its provider endpoint, payout
+address, quote key, allowed attestation keys, network, price ceiling, and deadline all pass startup
+validation. See [PROVIDER_PROTOCOL.md](PROVIDER_PROTOCOL.md) for the wire contract.
+
 ## Buyer flow
 
 1. The user asks Claude to buy a supported virtual result, for example a research pack on a topic.
@@ -49,6 +55,50 @@ Content-Type: application/json
 
 The route is documented for client integration and testing. The normal buyer-facing entry point is
 the Solana Pay or Pay CLI conversation with Claude.
+
+## Configured provider flow
+
+The provider API supplies the middle of the purchase, while Pay.sh supplies buyer authorization and
+the x402 payment exchange:
+
+1. The buyer or agent reads `GET /v1/providers` and selects a registered offer.
+2. It sends `POST /v1/orders` with the provider id, offer id, request, and an `Idempotency-Key`.
+3. Motto asks that provider for a signed quote. Motto rejects an expired, altered, misdirected, or
+   above-ceiling quote before asking the buyer to pay.
+4. Motto returns a private order token and execute path. Only a hash of that token is stored.
+5. The buyer calls the execute path through `pay fetch`, `pay curl`, a Pay-enabled agent, or another
+   x402-compatible client. An unpaid request receives an `upto` challenge for the quote ceiling,
+   paid directly to the provider wallet registered by the operator.
+6. After authorization, Motto sends the bound order to the provider. It checks the returned artifact
+   against a signed attestation from an allowed key before approving a charge.
+7. Missing, invalid, or late evidence approves $0. A settlement error becomes
+   `settlement_unknown`; Motto does not call it a refund or permit a blind retry.
+
+Example order creation:
+
+```http
+POST /v1/orders
+Content-Type: application/json
+Idempotency-Key: buyer-request-0001
+
+{
+  "provider_id": "paper-shop",
+  "offer_id": "research-pack",
+  "request": { "query": "battery recycling" }
+}
+```
+
+The response includes `order_token` and `execute_path`. Keep the token private and pass it only to
+the execute call:
+
+```bash
+pay fetch -X POST "https://motto.example/v1/orders/<order-id>/execute" \
+  -H "X-Motto-Order-Token: <order-token>"
+```
+
+The configured provider path is restricted to virtual or venue-local work that completes within
+180 seconds. It does not support shipped goods, delayed delivery, recurring billing, or splitting a
+single hold between Motto and the provider. Motto takes no fee from this hold.
 
 ## Settlement model
 
@@ -90,9 +140,14 @@ Useful checks:
 
 ```bash
 npm test
+npm run test:provider-sandbox
 npm run devnet:status
-node demo/verify-proof.mjs
+node proof/verify.mjs
 ```
+
+`test:provider-sandbox` requires the `pay` CLI and network access. It creates throwaway provider and
+Motto processes, runs a real `pay --sandbox fetch` x402 `upto` payment, and fails unless the provider
+quote, provider fulfillment, signed evidence, direct payout binding, and final settlement all pass.
 
 ## Network status
 
@@ -108,6 +163,11 @@ Recorded Pay.sh sandbox holds are historical localnet evidence. They verify the 
 and accounting rules, but they do not prove a Devnet or mainnet transaction. Mainnet is configured as
 an option and has not been exercised.
 
+On 2026-09-30, the generic provider path completed a paid localnet transaction with `pay 0.29.0`.
+Three consecutive runs of `npm run test:provider-sandbox` settled $0.01 test USDC after the signed
+provider result was verified. This proves the hosted sandbox exchange, not Devnet or mainnet. The
+saved result is in `proof/provider-sandbox.json`.
+
 The public Tailscale address used during the event was
 `https://motto.tail039d5c.ts.net`. Treat it as an environment address, not proof that the current build
 is deployed or reachable. Verify `/healthz`, the reported commit, the network, and the active catalog
@@ -119,10 +179,19 @@ before using it.
 |---|---|---|
 | `GET /v1/terms` | Free | Active offer, price, rules, network, version, and signing key |
 | `POST /v1/buy/research` | Up to $1.00 USDC | Route the research intent, obtain and validate the pack, then settle |
+| `GET /v1/providers` | Free | Operator-approved provider offers, payout addresses, keys, ceilings, and deadlines |
+| `POST /v1/orders` | Free | Obtain and verify a provider quote, then create a private order |
+| `GET /v1/orders/{id}` | Free, private token | Read one order and its payment state |
+| `POST /v1/orders/{id}/execute` | Provider-defined ceiling | Authorize, fulfill, verify evidence, and settle the order |
 | `GET /healthz` | Free | Process health, version, network, commit, uptime, and hold count |
 | `GET /openapi.json` | Free | Machine-readable description of the one active paid offer |
 
 Other routes used by the dashboard or operator are internal and are not catalog offers.
+
+The server constructs a separate PayKit instance for each configured provider. This is required
+because the current `upto` implementation takes the recipient from the PayKit operator
+configuration, not from a per-request gate override. Tests assert that the real `402` challenge
+contains the registered provider wallet.
 
 Detailed hold records and the live event stream are private. They are available from loopback for
 the on-device console, or remotely with `Authorization: Bearer <MOTTO_ADMIN_TOKEN>`. Public clients

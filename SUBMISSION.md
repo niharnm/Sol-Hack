@@ -34,6 +34,13 @@ The canonical internal operation is `POST /v1/buy/research`. The paid work is in
 provider coordination, packaging, and validation. Crossref metadata is public. The checks do not
 establish topical relevance, scientific quality, DOI resolution, or full-text access.
 
+The service also has an optional operator-approved provider protocol for adding virtual merchant
+offers without making Motto the seller. `GET /v1/providers` lists configured offers. Motto requests
+and verifies a signed quote, creates a private order, returns an x402 `upto` challenge that pays the
+registered merchant wallet, verifies signed delivery evidence, and settles the quote's amount for
+the verified outcome. The built-in catalog remains limited to `research` unless a provider registry
+is explicitly configured.
+
 ## Why the intermediary matters
 
 A buyer agent can authorize payment, but authorization alone does not prove delivery. Motto gives the
@@ -68,6 +75,13 @@ it requires funded operator and buyer wallets, a completed purchase, and transac
 Pay.sh sandbox proof files are localnet history. They verify saved readings and accounting behavior,
 not Devnet or mainnet transactions. Mainnet is configured as an option and has not been exercised.
 
+The automated provider tests use the real PayKit challenge generator and confirm that a configured
+order advertises `upto`, the quoted ceiling, and the merchant payout wallet. Provider fulfillment and
+settlement transitions are covered with controlled test doubles. On 2026-09-30, the separate system
+check completed three consecutive paid provider orders through `pay 0.29.0` and the hosted sandbox.
+Each run verified signed delivery evidence and settled $0.01 test USDC to the registry wallet. This
+does not prove Devnet or mainnet settlement.
+
 The Tailscale address used during the event was `https://motto.tail039d5c.ts.net`. Its existence does
 not confirm that the current build is deployed or reachable. The pay-skills catalog work must also be
 described from its current pull request and probe state, not from the presence of local listing files.
@@ -85,6 +99,7 @@ curl -i -X POST http://127.0.0.1:8787/v1/buy/research \
   -H 'Idempotency-Key: submission-demo-1' \
   -d '{"query":"refundable settlement for autonomous purchases"}'
 npm test
+npm run test:provider-sandbox
 ```
 
 The unpaid purchase request should return a `402` x402 `upto` offer for 1 USDC. A payment-aware buyer

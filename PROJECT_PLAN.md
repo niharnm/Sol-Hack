@@ -26,6 +26,11 @@ plumbing. They support the buyer flow but are not a promise that Motto can perfo
 Motto supports virtual goods and services only. The current catalog publishes one offer, a research
 pack built from Crossref public metadata.
 
+An optional operator-approved registry can publish additional virtual merchant offers through
+`GET /v1/providers`. Each configured offer fixes the provider endpoint, payout wallet, quote key,
+allowed attestation keys, network, hold ceiling, and a fulfillment deadline of at most 180 seconds.
+These offers do not expand the built-in catalog or its static OpenAPI document.
+
 Motto does not inspect, control, charge, rent, move, or deliver physical devices. For example,
 `charge my computer` is rejected as unsupported before an x402 offer or hold is created. The request
 must not be redirected to a generic check that could charge the user without delivering the requested
@@ -64,6 +69,9 @@ resolution, or full-text access.
 - An incomplete result or provider failure costs nothing.
 - Idempotent retries do not open a second eligible hold for the same payer and key.
 - Network and settlement claims match current evidence.
+- A configured merchant order obtains its signed quote before payment, pays the registered merchant
+  wallet directly, verifies the registered attestation before charging, and records an unknown state
+  instead of guessing when settlement cannot be confirmed.
 
 ## 5. Architecture
 
@@ -102,6 +110,10 @@ and closed to unsupported catalog items.
 |---|---|
 | `GET /v1/terms` | Free description of the active offer, rules, network, version, and signing key |
 | `POST /v1/buy/research` | One paid virtual purchase operation |
+| `GET /v1/providers` | Free list of operator-approved merchant offers and terms |
+| `POST /v1/orders` | Obtain a merchant quote and create a private order |
+| `GET /v1/orders/{id}` | Read a private order with its capability token |
+| `POST /v1/orders/{id}/execute` | Authorize, fulfill, verify, and settle a configured merchant order |
 | `GET /openapi.json` | Machine-readable contract for the active catalog offer |
 | `GET /healthz` | Operational health and current version information |
 
@@ -135,6 +147,12 @@ Pay.sh sandbox proof files are localnet history. They can verify saved signature
 do not confirm Devnet or mainnet settlement. Mainnet support is configuration only and has not been
 exercised.
 
+The generic provider suite generates a real PayKit `upto` challenge and asserts that its amount and
+`payTo` wallet match the signed merchant quote and registry. Controlled payment objects cover the
+post-authorization state machine. The paid system check then runs the same path with
+`pay --sandbox fetch`. It completed three consecutive $0.01 test-USDC settlements with `pay 0.29.0`
+on 2026-09-30. This is localnet evidence only.
+
 The event Tailscale URL and the open pay-skills pull request are not proof of a current deployment,
 catalog merge, or mainnet availability. Check the live endpoint, reported commit, network, sidecar,
 and current pull request state before making any such claim.
@@ -161,8 +179,9 @@ Run the smallest relevant check after each change, then the full set before subm
 ```bash
 cd motto
 npm test
+npm run test:provider-sandbox
 npm run devnet:status
-node demo/verify-proof.mjs
+node proof/verify.mjs
 ```
 
 Add focused tests for:
@@ -173,8 +192,12 @@ Add focused tests for:
 - the unpaid `402` amount and scheme;
 - complete delivery settlement;
 - incomplete and provider-failure refunds;
-- signed-result verification; and
-- idempotent retry behavior.
+- signed-result verification;
+- idempotent retry behavior;
+- provider quote acquisition before payment;
+- merchant payout binding in the PayKit `402` challenge;
+- signed fulfillment evidence before charge approval; and
+- zero settlement on invalid or late evidence plus terminal handling for unknown settlement.
 
 Before starting a local server, run `lsof -i:8787` and reuse or stop the existing process deliberately.
 

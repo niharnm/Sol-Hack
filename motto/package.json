@@ -15,7 +15,8 @@
     "devnet:status": "node scripts/devnet-status.mjs",
     "devnet:fund": "node scripts/devnet-status.mjs --airdrop",
     "start:sandbox": "NETWORK=localnet node src/server.js",
-    "buy:devnet": "node scripts/devnet-buy.mjs"
+    "buy:devnet": "node scripts/devnet-buy.mjs",
+    "test:provider-sandbox": "node scripts/provider-sandbox-e2e.mjs"
   },
   "keywords": [],
   "author": "",

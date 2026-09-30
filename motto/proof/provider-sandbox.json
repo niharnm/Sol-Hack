@@ -1,0 +1,25 @@
+{
+  "verified_at": "2026-09-30T22:28:32Z",
+  "command": "npm run test:provider-sandbox",
+  "pay_version": "pay 0.29.0",
+  "network": "localnet",
+  "asset": "test USDC",
+  "provider_id": "sandbox-provider",
+  "payment_state": "settled",
+  "fulfillment_state": "verified",
+  "charged_usd": "0.01",
+  "returned_usd": "0.00",
+  "settlement_transaction": "3eZKTFwegKMihEcgTYuBwYTwZbiEQtccmtCWiAmWXY5A2sBrEMNPXmPC2pCQxui5Si5kmA2ezUL1XVv9Bg14WL9R",
+  "provider_calls": [
+    "quote",
+    "fulfill"
+  ],
+  "payout_matches_registry": true,
+  "consecutive_pay_fetch_passes": 3,
+  "limits": [
+    "The provider and attestor were throwaway local test processes.",
+    "The settlement used Pay.sh hosted localnet and test USDC.",
+    "This does not prove a funded Devnet or mainnet payment.",
+    "Rapid repeated pay curl checks were intermittent, so the saved system check uses pay fetch."
+  ]
+}

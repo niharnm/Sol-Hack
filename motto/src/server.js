@@ -191,7 +191,7 @@ app.get('/v1/terms', (req, res) => {
       create_order: 'POST /v1/orders',
       execute_order: 'POST /v1/orders/{id}/execute',
       payment_recipient: 'The registered provider payout address frozen into its signed quote.',
-      fulfillment_rule: 'Missing, invalid, or late independent evidence settles zero.',
+      fulfillment_rule: 'Missing, invalid, or late evidence from the offer\'s registered attestation key settles zero.',
       maximum_fulfillment_seconds: 180,
     },
     devicePublicKey,
