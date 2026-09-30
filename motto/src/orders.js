@@ -95,6 +95,9 @@ export class OrderStore {
       if (prior.creation_sha256 !== creationSha256) fail(409, 'idempotency_conflict', 'Idempotency-Key was used with different order data');
       return { order: withoutSecrets(prior), capability: this.capabilityFor(prior.id), replayed: true };
     }
+    if (this.orders.some(order => order.quote_fingerprint === quoteFingerprint)) {
+      fail(409, 'quote_already_used', 'signed quote already belongs to another order');
+    }
 
     const quote = signedQuote.quote;
     const id = this.uuid();

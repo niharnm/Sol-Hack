@@ -8,6 +8,7 @@ import { OrderError, OrderStore } from '../src/orders.js';
 const dir = mkdtempSync(join(tmpdir(), 'motto-orders-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 let uuidSequence = 0;
+let storeSequence = 0;
 
 function signedQuote() {
   return {
@@ -31,7 +32,7 @@ function signedQuote() {
 
 function store(options = {}) {
   return new OrderStore({
-    dataDir: dir,
+    dataDir: join(dir, String(++storeSequence)),
     capabilitySecret: 'a'.repeat(32),
     now: () => 1_800_000_000_000,
     uuid: () => `00000000-0000-4000-8000-${String(++uuidSequence).padStart(12, '0')}`,
@@ -55,7 +56,7 @@ test('creates private orders and returns the same response for an exact idempote
   assert.equal(retry.replayed, true);
   assert.equal(first.order.capability_sha256, undefined);
   assert.equal(first.order.idempotency_sha256, undefined);
-  assert.equal(readFileSync(join(dir, 'orders.json'), 'utf8').includes(first.capability), false);
+  assert.equal(readFileSync(orders.file, 'utf8').includes(first.capability), false);
   assert.deepEqual(orders.get(first.order.id, first.capability).request, input.request);
   assert.throws(() => orders.get(first.order.id, 'wrong'), error => errorCode(error) === 'order_not_found');
 });
@@ -66,6 +67,7 @@ test('rejects changed data under an existing idempotency key', () => {
   orders.create(input);
   assert.throws(() => orders.create({ ...input, request: { query: 'changed' } }), error => errorCode(error) === 'idempotency_conflict');
   assert.throws(() => orders.create({ ...input, idempotencyKey: 'short' }), error => errorCode(error) === 'invalid_idempotency_key');
+  assert.throws(() => orders.create({ ...input, idempotencyKey: 'request-0002-second' }), error => errorCode(error) === 'quote_already_used');
 });
 
 test('records held, verified and settled states with separate fulfillment and payment status', () => {

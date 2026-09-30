@@ -4,11 +4,14 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import bs58 from 'bs58';
+import { quoteSigningPayload, sha256Hex } from '../src/provider-protocol.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'desk-server-'));
@@ -17,7 +20,7 @@ let desk;
 
 // Real keys and mainnet settings from the caller's shell never reach the test servers.
 const env = { ...process.env };
-for (const name of ['NETWORK', 'RPC_URL', 'OPERATOR_KEY', 'RECIPIENT', 'RECEIPT_KEY', 'RECEIPT_RPC_URL', 'CHARGER_WAIT_MS']) delete env[name];
+for (const name of ['NETWORK', 'RPC_URL', 'OPERATOR_KEY', 'RECIPIENT', 'RECEIPT_KEY', 'RECEIPT_RPC_URL', 'CHARGER_WAIT_MS', 'MOTTO_PROVIDERS_FILE', 'MOTTO_ALLOW_LOCAL_PROVIDERS', 'PUBLIC_ORIGIN']) delete env[name];
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -140,6 +143,64 @@ test('GET /openapi.json advertises only the canonical research purchase', async 
   assert.deepEqual(Object.keys(doc.paths), ['/v1/buy/research']);
   const [offer] = doc.paths['/v1/buy/research'].post['x-payment-info'].offers;
   assert.deepEqual([offer.method, offer.scheme, offer.amount, offer.currency], ['x402', 'upto', '1000000', 'USDC']);
+});
+
+test('configured provider orders issue a real upto offer paid directly to the provider', async () => {
+  const quoteKeys = generateKeyPairSync('ed25519');
+  const attestorKeys = generateKeyPairSync('ed25519');
+  const publicHex = key => key.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex');
+  const payout = bs58.encode(randomBytes(32));
+  const providersFile = join(dir, 'providers.json');
+  writeFileSync(providersFile, JSON.stringify({
+    version: 1,
+    providers: [{
+      id: 'paper-shop',
+      name: 'Paper Shop',
+      payout_address: payout,
+      quote_public_key: publicHex(quoteKeys.publicKey),
+      fulfillment_url: 'https://merchant.example/motto/fulfill',
+      attestors: [{ id: 'delivery-service', public_key: publicHex(attestorKeys.publicKey) }],
+      offers: [{
+        id: 'research-pack', summary: 'Buy a signed research pack', network: 'localnet', max_hold_usd: '2.00',
+        fulfillment_timeout_seconds: 30, attestor_ids: ['delivery-service'],
+      }],
+    }],
+  }));
+  const configured = await startDesk({ MOTTO_PROVIDERS_FILE: providersFile });
+  const request = { query: 'battery recycling' };
+  const quote = {
+    version: 1,
+    quote_id: `quote_${randomBytes(8).toString('hex')}`,
+    provider_id: 'paper-shop',
+    offer_id: 'research-pack',
+    network: 'localnet',
+    payout_address: payout,
+    hold_usd: '1.25',
+    settlement: { delivered_usd: '1.25', already_handled_usd: '0.10', not_delivered_usd: '0.00', inconclusive_usd: '0.00' },
+    request_sha256: sha256Hex(request),
+    attestor_id: 'delivery-service',
+    nonce: randomBytes(18).toString('base64url'),
+    expires_at_ms: Date.now() + 60_000,
+    fulfillment_timeout_seconds: 30,
+  };
+  const signedQuote = { quote, signature: sign(null, Buffer.from(quoteSigningPayload(quote)), quoteKeys.privateKey).toString('base64url') };
+  const createdResponse = await fetch(`${configured.base}/v1/orders`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'idempotency-key': `test-${randomBytes(12).toString('hex')}` },
+    body: JSON.stringify({ signed_quote: signedQuote, request }),
+  });
+  assert.equal(createdResponse.status, 201);
+  const created = await createdResponse.json();
+  const denied = await fetch(`${configured.base}${created.execute_path}`, {
+    method: 'POST', headers: { 'x-motto-order-token': created.order_token },
+  });
+  const deniedBody = await denied.text();
+  assert.equal(denied.status, 402, `${deniedBody}\n${configured.log}`);
+  const required = JSON.parse(Buffer.from(denied.headers.get('payment-required'), 'base64').toString('utf8'));
+  assert.equal(required.accepts[0].scheme, 'upto');
+  assert.equal(required.accepts[0].payTo, payout);
+  assert.equal(required.accepts[0].amount, '1250000');
+  assert.equal(required.accepts[0].maxTimeoutSeconds, 300);
 });
 
 test('GET /healthz reports network, commit, uptime and hold count', async () => {

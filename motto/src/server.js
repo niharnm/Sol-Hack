@@ -14,6 +14,10 @@ import { devicePublicKey } from './checks.js';
 import { ITEMS, MAX_HOLD_USD, publicTerms } from './items.js';
 import { postReceipt } from './receipt.js';
 import { settlementFor } from './settlement.js';
+import { loadProviderRegistry } from './provider-registry.js';
+import { OrderStore } from './orders.js';
+import { ProviderClient } from './provider-client.js';
+import { mountProviderApi } from './provider-api.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const NETWORK = process.env.NETWORK ?? 'devnet';
@@ -26,6 +30,9 @@ const HOLDS_FILE = join(DATA_DIR, 'holds.jsonl');
 // Enough history for the dashboard counters without growing memory forever.
 const MAX_HOLDS = 500;
 const PHYSICAL_ITEMS = new Set(['charger', 'hotspot', 'battery_pack', 'storage', 'display', 'monitor']);
+const PROVIDERS_FILE = process.env.MOTTO_PROVIDERS_FILE;
+const ALLOW_LOCAL_PROVIDERS = process.env.MOTTO_ALLOW_LOCAL_PROVIDERS === 'true';
+if (ALLOW_LOCAL_PROVIDERS && !['localnet', 'devnet'].includes(NETWORK)) throw new Error('Local providers are allowed only on localnet or devnet');
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const SETTLE_FAILED_REASON = 'Settlement was not confirmed: charge and return amounts are unknown until the transaction is inspected. A retry, even with the same Idempotency-Key, opens a fresh hold.';
 // Statuses a retried request may be answered from. A failed or interrupted settlement cannot be
@@ -135,6 +142,36 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
+const providerRegistry = PROVIDERS_FILE ? loadProviderRegistry(PROVIDERS_FILE, { allowLocal: ALLOW_LOCAL_PROVIDERS }) : null;
+if (providerRegistry) {
+  const providerSigner = operatorSigner ?? pay.config.operator.signer;
+  if (!providerSigner) throw new Error('OPERATOR_KEY is required when provider orders are configured');
+  const orders = new OrderStore({ dataDir: join(DATA_DIR, 'orders') });
+  const providerClient = new ProviderClient({ registry: providerRegistry, allowLocal: ALLOW_LOCAL_PROVIDERS });
+  const providerPayments = new Map();
+  for (const provider of providerRegistry.config.providers) {
+    providerPayments.set(provider.id, await createPayKit({
+      network: NETWORK,
+      rpcUrl: RPC_URL,
+      accept: ['x402'],
+      operator: { signer: providerSigner, recipient: provider.payout_address },
+    }));
+  }
+  mountProviderApi({
+    app,
+    pay,
+    registry: providerRegistry,
+    orders,
+    providerClient,
+    payForProvider: providerId => providerPayments.get(providerId),
+    network: NETWORK,
+    publicOrigin: process.env.PUBLIC_ORIGIN,
+  });
+} else {
+  app.get('/v1/providers', (_req, res) => res.json({ configured: false, providers: [] }));
+  app.use('/v1/orders', (_req, res) => res.status(503).json({ error: 'provider_registry_not_configured' }));
+}
+
 app.get('/v1/terms', (req, res) => {
   res.json({
     service: 'Motto',
@@ -148,6 +185,15 @@ app.get('/v1/terms', (req, res) => {
     max_hold_usd: MAX_HOLD_USD,
     network: NETWORK,
     scheme: 'x402 upto: you authorize the hold, the desk settles only what is owed, the rest returns to you.',
+    provider_api: {
+      configured: Boolean(providerRegistry),
+      providers: 'GET /v1/providers',
+      create_order: 'POST /v1/orders',
+      execute_order: 'POST /v1/orders/{id}/execute',
+      payment_recipient: 'The registered provider payout address frozen into its signed quote.',
+      fulfillment_rule: 'Missing, invalid, or late independent evidence settles zero.',
+      maximum_fulfillment_seconds: 180,
+    },
     devicePublicKey,
     items: publicTerms(),
     endpoints: Object.fromEntries(Object.keys(ITEMS).map(name => [name, `POST /v1/buy/${name}`])),
@@ -424,7 +470,7 @@ app.use((error, req, res, next) => {
   const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 600 ? error.status : 500;
   console.error(`${req.method} ${req.originalUrl} -> ${status}`, status < 500 ? error.message : error);
   if (res.headersSent) return next(error);
-  res.status(status).json({ error: status < 500 ? error.message : 'internal error' });
+  res.status(status).json({ error: error?.code ?? (status < 500 ? error.message : 'internal error') });
 });
 
 app.listen(PORT, () => {
